@@ -1,0 +1,14 @@
+{
+  "post": {
+    "platform": "x",
+    "sourceUrl": "https://x.com/ferrix/status/1",
+    "postId": "1",
+    "author": { "name": "Ferrix", "username": "ferrix", "verified": false },
+    "content": {
+      "text": "The message outlives the messenger.\n\nThis card was rendered from a JSON fixture by the Ferrix renderer, with long-text wrapping, mentions like @someone, and links like https://example.com/a/very/long/path.",
+      "media": []
+    },
+    "timestamp": "2026-11-02T18:30:00Z"
+  },
+  "options": { "theme": "light", "attribution": "original" }
+}

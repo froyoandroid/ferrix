@@ -1,0 +1,15 @@
+{
+  "name": "ferrix",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev:backend": "bun run --filter @ferrix/backend dev",
+    "dev:frontend": "bun run --filter @ferrix/frontend dev",
+    "render:fixture": "bun run --filter @ferrix/backend render:fixture",
+    "typecheck": "bun run --filter '*' typecheck"
+  }
+}
