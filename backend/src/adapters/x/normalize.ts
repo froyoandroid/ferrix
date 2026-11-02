@@ -1,4 +1,4 @@
-import type { MediaItem, NormalizedPost } from "@ferrix/shared";
+import type { MediaItem, NormalizedPost, QuotedPost } from "@ferrix/shared";
 import type { SynTweet } from "./syndication";
 
 const decodeEntities = (s: string) =>
@@ -6,10 +6,18 @@ const decodeEntities = (s: string) =>
 
 /** Visible text: honour display_text_range (code points), expand t.co links, drop trailing media links. */
 function visibleText(t: SynTweet): string {
+  const quotedId = t.quoted_tweet?.id_str;
   const chars = Array.from(t.text);
-  const [start, end] = t.display_text_range ?? [0, chars.length];
+  // display_text_range is sometimes counted in UTF-16 units (astral emoji), so clamp to code points.
+  const [rawStart, rawEnd] = t.display_text_range ?? [0, chars.length];
+  const start = Math.min(rawStart, chars.length);
+  const end = Math.min(rawEnd, chars.length);
   const replacements = new Map<number, { end: number; text: string }>();
-  for (const u of t.entities?.urls ?? []) replacements.set(u.indices[0], { end: u.indices[1], text: u.expanded_url ?? u.display_url });
+  for (const u of t.entities?.urls ?? []) {
+    // The link to a quoted post is shown as the quote card instead.
+    const isQuoteLink = quotedId && new RegExp(`/status/${quotedId}(?:[/?]|$)`).test(u.expanded_url ?? "");
+    replacements.set(u.indices[0], { end: u.indices[1], text: isQuoteLink ? "" : (u.expanded_url ?? u.display_url) });
+  }
   for (const m of t.entities?.media ?? []) replacements.set(m.indices[0], { end: m.indices[1], text: "" });
 
   let out = "";
@@ -18,7 +26,7 @@ function visibleText(t: SynTweet): string {
     if (r) {
       out += r.text;
       i = r.end;
-    } else out += chars[i++];
+    } else out += chars[i++] ?? "";
   }
   return decodeEntities(out).trim();
 }
@@ -39,7 +47,7 @@ function media(t: SynTweet): MediaItem[] {
   });
 }
 
-export function normalizeTweet(t: SynTweet): NormalizedPost {
+function base(t: SynTweet): QuotedPost {
   const avatar = t.user.profile_image_url_https?.replace(/_normal(\.\w+)$/, "_400x400$1");
   return {
     platform: "x",
@@ -54,4 +62,10 @@ export function normalizeTweet(t: SynTweet): NormalizedPost {
     content: { text: visibleText(t), media: media(t) },
     timestamp: new Date(t.created_at).toISOString(),
   };
+}
+
+export function normalizeTweet(t: SynTweet): NormalizedPost {
+  const post: NormalizedPost = base(t);
+  if (t.quoted_tweet?.user && t.quoted_tweet.id_str) post.quote = base(t.quoted_tweet);
+  return post;
 }

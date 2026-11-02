@@ -1,6 +1,6 @@
 import type { RenderOptions } from "@ferrix/shared";
 import type { Theme } from "../themes";
-import type { ResolvedMedia, ResolvedPost } from "../resolve";
+import type { ResolvedMedia, ResolvedPost, ResolvedQuote } from "../resolve";
 import { RichText } from "../richtext";
 
 export const X_PADDING = 24;
@@ -23,7 +23,7 @@ export function shortDate(iso: string | undefined, timeZone: string) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone });
 }
 
-export function Avatar({ post, size, theme }: { post: ResolvedPost; size: number; theme: Theme }) {
+export function Avatar({ post, size, theme }: { post: ResolvedPost | ResolvedQuote; size: number; theme: Theme }) {
   if (post.avatar)
     return <img src={post.avatar.src} width={size} height={size} style={{ borderRadius: 9999, objectFit: "cover" }} />;
   const initial = (post.author.name ?? post.author.username ?? "?").slice(0, 1).toUpperCase();
@@ -92,7 +92,7 @@ function MediaTile({ m, w, h, theme }: { m: ResolvedMedia; w: number; h: number;
 }
 
 /** X-style media grid: 1 natural (clamped), 2 side by side, 3 one big + two stacked, 4 as 2×2. */
-export function MediaGrid({ media, width, theme }: { media: ResolvedMedia[]; width: number; theme: Theme }) {
+export function MediaGrid({ media, width, theme, flush }: { media: ResolvedMedia[]; width: number; theme: Theme; flush?: boolean }) {
   if (!media.length) return null;
   const n = media.length;
   let height: number;
@@ -140,17 +140,59 @@ export function MediaGrid({ media, width, theme }: { media: ResolvedMedia[]; wid
     );
 
   return (
-    <div style={{ display: "flex", borderRadius: RADIUS, border: `1px solid ${theme.border}`, overflow: "hidden", width: width + 2 }}>
+    <div style={flush ? { display: "flex", width } : { display: "flex", borderRadius: RADIUS, border: `1px solid ${theme.border}`, overflow: "hidden", width: width + 2 }}>
       {body}
     </div>
   );
 }
 
-export function NameLine({ post, theme, fontSize = 16 }: { post: ResolvedPost; theme: Theme; fontSize?: number }) {
+export function NameLine({ post, theme, fontSize = 16 }: { post: ResolvedPost | ResolvedQuote; theme: Theme; fontSize?: number }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize, fontWeight: 700 }}>
       {post.author.name ?? (post.author.username ? `@${post.author.username}` : "")}
-      {post.author.verified === true && <VerifiedBadge theme={theme} />}
+      {post.author.verified === true && <VerifiedBadge theme={theme} size={Math.round(fontSize * 1.1)} />}
+    </div>
+  );
+}
+
+/** Embedded quote post: bordered box with compact header, text and media. */
+export function QuoteCard({ quote, options, theme, width }: { quote: ResolvedQuote; options: RenderOptions; theme: Theme; width: number }) {
+  const showIdentity = options.attribution !== "clean";
+  const original = options.attribution === "original";
+  const date = original ? shortDate(quote.timestamp, options.timeZone) : null;
+  const inner = width - 2;
+  const hasText = Boolean(quote.content.text.trim());
+  return (
+    <div style={{ display: "flex", flexDirection: "column", width, border: `1px solid ${theme.border}`, borderRadius: RADIUS, overflow: "hidden" }}>
+      {(showIdentity || hasText) && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: 12 }}>
+          {showIdentity && (
+            <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 15 }}>
+              {original && (
+                <div style={{ display: "flex", marginRight: 4 }}>
+                  <Avatar post={quote} size={20} theme={theme} />
+                </div>
+              )}
+              <NameLine post={quote} theme={theme} fontSize={15} />
+              {quote.author.username && quote.author.name && (
+                <div style={{ display: "flex", color: theme.muted }}>{`@${quote.author.username}`}</div>
+              )}
+              {date && <div style={{ display: "flex", color: theme.muted }}>{`· ${date}`}</div>}
+            </div>
+          )}
+          {hasText && <RichText text={quote.content.text} theme={theme} fontSize={15} />}
+        </div>
+      )}
+      {quote.resolvedMedia.length > 0 && <QuoteMedia media={quote.resolvedMedia} width={inner} theme={theme} />}
+    </div>
+  );
+}
+
+function QuoteMedia({ media, width, theme }: { media: ResolvedMedia[]; width: number; theme: Theme }) {
+  // Same grid as the main post but borderless and square-cornered, flush with the quote box.
+  return (
+    <div style={{ display: "flex", marginTop: -1, marginLeft: -1 }}>
+      <MediaGrid media={media} width={width} theme={theme} flush />
     </div>
   );
 }
@@ -195,6 +237,7 @@ export function XCard({
       )}
       {post.content.text.trim() && <RichText text={post.content.text} theme={theme} fontSize={20} />}
       <MediaGrid media={post.resolvedMedia} width={contentWidth} theme={theme} />
+      {post.resolvedQuote && <QuoteCard quote={post.resolvedQuote} options={options} theme={theme} width={contentWidth + 2} />}
       {ts && <div style={{ display: "flex", fontSize: 15, color: theme.muted }}>{ts}</div>}
     </div>
   );

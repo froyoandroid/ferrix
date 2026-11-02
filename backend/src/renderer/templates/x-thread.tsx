@@ -2,7 +2,7 @@ import type { RenderOptions } from "@ferrix/shared";
 import type { Theme } from "../themes";
 import type { ResolvedPost } from "../resolve";
 import { RichText } from "../richtext";
-import { Avatar, MediaGrid, NameLine, shortDate } from "./x";
+import { Avatar, MediaGrid, NameLine, QuoteCard, shortDate } from "./x";
 
 const PAD = 20;
 const AVATAR = 40;
@@ -66,6 +66,7 @@ export function XThreadItem({
         )}
         {post.content.text.trim() && <RichText text={post.content.text} theme={theme} fontSize={17} />}
         <MediaGrid media={post.resolvedMedia} width={contentWidth} theme={theme} />
+        {post.resolvedQuote && <QuoteCard quote={post.resolvedQuote} options={options} theme={theme} width={contentWidth + 2} />}
       </div>
     </div>
   );

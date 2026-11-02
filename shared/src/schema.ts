@@ -19,7 +19,7 @@ export const MediaItem = z.object({
 });
 export type MediaItem = z.infer<typeof MediaItem>;
 
-export const NormalizedPost = z.object({
+const PostBase = z.object({
   platform: Platform,
   sourceUrl: z.string().url(),
   postId: z.string().max(64).optional(),
@@ -35,6 +35,14 @@ export const NormalizedPost = z.object({
     media: z.array(MediaItem).max(LIMITS.mediaPerPost).default([]),
   }),
   timestamp: z.string().datetime({ offset: true }).optional(),
+});
+
+/** A post embedded inside another (X quote post). One level deep only. */
+export const QuotedPost = PostBase;
+export type QuotedPost = z.infer<typeof QuotedPost>;
+
+export const NormalizedPost = PostBase.extend({
+  quote: QuotedPost.optional(),
   thread: z
     .object({
       parentId: z.string().optional(),
