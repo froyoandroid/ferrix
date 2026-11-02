@@ -3,12 +3,19 @@
     "platform": "x",
     "sourceUrl": "https://x.com/ferrix/status/1",
     "postId": "1",
-    "author": { "name": "Ferrix", "username": "ferrix", "verified": false },
+    "author": {
+      "name": "Ferrix",
+      "username": "ferrix",
+      "verified": false
+    },
     "content": {
-      "text": "The message outlives the messenger.\n\nThis card was rendered from a JSON fixture by the Ferrix renderer, with long-text wrapping, mentions like @someone, and links like https://example.com/a/very/long/path.",
+      "text": "The message outlives the messenger. \ud83d\udd25\ud83e\udee1\n\nThis card was rendered from a JSON fixture by the Ferrix renderer, with long-text wrapping, mentions like @someone, emoji \ud83d\udc69\ud83c\udffd\u200d\ud83d\udcbb \u2764\ufe0f, and links like https://example.com/a/very/long/path.",
       "media": []
     },
     "timestamp": "2026-11-02T18:30:00Z"
   },
-  "options": { "theme": "light", "attribution": "original" }
+  "options": {
+    "theme": "light",
+    "attribution": "original"
+  }
 }

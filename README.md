@@ -10,6 +10,13 @@ Turns public social posts (X, Threads; Facebook later) into standalone images yo
 - `backend/` – Bun + Hono API; renderer (Satori → SVG → resvg → PNG), adapters, export
 - `frontend/` – Vite + React + Tailwind preview UI
 
+## API
+
+- `POST /api/render` – `{ post, options }` → PNG
+- `POST /api/render/thread` – `{ posts, mode: "combined" | "individual", numbering, select?, options }` → PNG, or ZIP (with `sources.json`) when there are several images
+
+Remote images (avatars, media) are fetched only over https from hosts in `FERRIX_IMAGE_HOSTS` (default `pbs.twimg.com,abs.twimg.com`), with no redirects, an 8 MB cap, and a magic-byte check.
+
 ## Dev
 
 ```sh
