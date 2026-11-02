@@ -10,9 +10,12 @@ export const Platform = z.enum(["x", "threads", "facebook"]);
 export type Platform = z.infer<typeof Platform>;
 
 export const MediaItem = z.object({
-  type: z.enum(["image", "video"]),
+  type: z.enum(["image", "video", "gif"]),
   url: z.string().url().optional(),
   thumbnailUrl: z.string().url().optional(),
+  /** Playable MP4 for video/gif, used by animated export. */
+  videoUrl: z.string().url().optional(),
+  durationMs: z.number().int().nonnegative().optional(),
   altText: z.string().max(2_000).optional(),
   width: z.number().int().positive().optional(),
   height: z.number().int().positive().optional(),

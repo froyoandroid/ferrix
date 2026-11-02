@@ -20,7 +20,19 @@ const sample = [
 ];
 
 const Input = z.union([NormalizedPost, z.array(NormalizedPost).min(1)]);
-type Result = { kind: "png"; url: string } | { kind: "zip"; url: string; count: string };
+type Result =
+  | { kind: "png"; url: string; name: string }
+  | { kind: "zip"; url: string; name: string; count: string }
+  | { kind: "mp4"; url: string; name: string };
+
+/** Filename from the server's Content-Disposition, so downloads carry the post's identity. */
+function fileName(res: Response, fallback: string) {
+  return /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? fallback;
+}
+
+type Single = z.infer<typeof NormalizedPost>;
+const hasMotion = (p: Single) =>
+  [...p.content.media, ...(p.quote?.content.media ?? [])].some((m) => m.type !== "image" && m.videoUrl);
 
 export default function App() {
   const [json, setJson] = useState(JSON.stringify(sample, null, 2));
@@ -34,6 +46,8 @@ export default function App() {
   const [url, setUrl] = useState("");
   const [asThread, setAsThread] = useState(false);
   const [fetching, setFetching] = useState(false);
+  const [single, setSingle] = useState<Single | null>(null);
+  const [encoding, setEncoding] = useState(false);
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   async function fetchPost(e?: React.FormEvent) {
@@ -67,6 +81,7 @@ export default function App() {
     }
     const options = { theme, attribution, timeZone };
     const isThread = Array.isArray(input) && input.length > 1;
+    setSingle(isThread ? null : Array.isArray(input) ? input[0] : input);
     const body = isThread
       ? { posts: input, mode, numbering, options }
       : { post: Array.isArray(input) ? input[0] : input, options };
@@ -79,14 +94,36 @@ export default function App() {
       });
       if (!res.ok) return setError(await res.text());
       const url = URL.createObjectURL(await res.blob());
+      const isZip = res.headers.get("Content-Type")?.includes("zip");
+      const name = fileName(res, isZip ? "ferrix-thread.zip" : "ferrix.png");
       setResult((old) => {
         if (old) URL.revokeObjectURL(old.url);
-        return res.headers.get("Content-Type")?.includes("zip")
-          ? { kind: "zip", url, count: res.headers.get("X-Ferrix-Count") ?? "?" }
-          : { kind: "png", url };
+        return isZip ? { kind: "zip", url, name, count: res.headers.get("X-Ferrix-Count") ?? "?" } : { kind: "png", url, name };
       });
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function renderVideo() {
+    if (!single) return;
+    setError(null);
+    setEncoding(true);
+    try {
+      const res = await fetch("/api/render/video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ post: single, options: { theme, attribution, timeZone } }),
+      });
+      if (!res.ok) return setError((await res.json().catch(() => null))?.error ?? `Video render failed (${res.status})`);
+      const url = URL.createObjectURL(await res.blob());
+      const name = fileName(res, "ferrix.mp4");
+      setResult((old) => {
+        if (old) URL.revokeObjectURL(old.url);
+        return { kind: "mp4", url, name };
+      });
+    } finally {
+      setEncoding(false);
     }
   }
 
@@ -142,6 +179,11 @@ export default function App() {
             <button className="rounded bg-black px-3 py-1 text-white disabled:opacity-50" onClick={() => render()} disabled={busy}>
               {busy ? "Rendering…" : "Render"}
             </button>
+            {single && hasMotion(single) && (
+              <button className="rounded border border-black px-3 py-1 disabled:opacity-50" onClick={renderVideo} disabled={encoding}>
+                {encoding ? "Encoding video…" : "Animated (MP4)"}
+              </button>
+            )}
           </div>
           {error && <pre className="whitespace-pre-wrap text-xs text-red-600">{error}</pre>}
         </section>
@@ -149,11 +191,17 @@ export default function App() {
           {result?.kind === "png" && (
             <>
               <img src={result.url} alt="Rendered post" className="rounded border border-neutral-200" />
-              <a className="text-sm underline" href={result.url} download="ferrix.png">Download PNG</a>
+              <a className="text-sm underline" href={result.url} download={result.name}>Download PNG</a>
+            </>
+          )}
+          {result?.kind === "mp4" && (
+            <>
+              <video src={result.url} controls autoPlay loop muted playsInline className="rounded border border-neutral-200" />
+              <a className="text-sm underline" href={result.url} download={result.name}>Download MP4</a>
             </>
           )}
           {result?.kind === "zip" && (
-            <a className="rounded border border-neutral-300 p-4 text-sm underline" href={result.url} download="ferrix-thread.zip">
+            <a className="rounded border border-neutral-300 p-4 text-sm underline" href={result.url} download={result.name}>
               Download {result.count} images (ZIP)
             </a>
           )}

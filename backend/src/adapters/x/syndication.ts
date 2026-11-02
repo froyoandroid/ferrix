@@ -13,6 +13,10 @@ export interface SynMedia {
   media_url_https: string;
   ext_alt_text?: string;
   original_info?: { width: number; height: number };
+  video_info?: {
+    duration_millis?: number;
+    variants?: { bitrate?: number; content_type: string; url: string }[];
+  };
 }
 export interface SynTweet {
   __typename: "Tweet" | "TweetTombstone" | string;

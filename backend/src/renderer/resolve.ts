@@ -3,7 +3,12 @@ import { loadImage, type LoadedImage } from "./images";
 
 export interface ResolvedMedia extends MediaItem {
   img: LoadedImage | null;
+  /** Animated export: paint this slot a key colour so the video can be composited into it. */
+  key?: boolean;
 }
+
+export const KEY_RGB = [0, 255, 1] as const;
+export const KEY_COLOR = "#00ff01";
 export interface ResolvedQuote extends QuotedPost {
   avatar: LoadedImage | null;
   resolvedMedia: ResolvedMedia[];
@@ -18,7 +23,7 @@ export interface ResolvedPost extends Omit<NormalizedPost, "quote"> {
 async function resolveBase<T extends QuotedPost>(post: T, withAvatar: boolean) {
   const [avatar, imgs] = await Promise.all([
     withAvatar ? loadImage(post.author.avatarUrl) : Promise.resolve(null),
-    Promise.all(post.content.media.map((m) => loadImage(m.type === "video" ? m.thumbnailUrl : (m.url ?? m.thumbnailUrl)))),
+    Promise.all(post.content.media.map((m) => loadImage(m.type === "image" ? (m.url ?? m.thumbnailUrl) : m.thumbnailUrl))),
   ]);
   return { ...post, avatar, resolvedMedia: post.content.media.map((m, i) => ({ ...m, img: imgs[i] })) };
 }

@@ -1,6 +1,6 @@
 import type { RenderOptions } from "@ferrix/shared";
 import type { Theme } from "../themes";
-import type { ResolvedMedia, ResolvedPost, ResolvedQuote } from "../resolve";
+import { KEY_COLOR, type ResolvedMedia, type ResolvedPost, type ResolvedQuote } from "../resolve";
 import { RichText } from "../richtext";
 
 export const X_PADDING = 24;
@@ -69,6 +69,7 @@ function XLogo({ theme, size = 22 }: { theme: Theme; size?: number }) {
 }
 
 function MediaTile({ m, w, h, theme }: { m: ResolvedMedia; w: number; h: number; theme: Theme }) {
+  if (m.key) return <div style={{ display: "flex", width: w, height: h, backgroundColor: KEY_COLOR }} />;
   return (
     <div style={{ display: "flex", position: "relative", width: w, height: h, backgroundColor: theme.media, overflow: "hidden" }}>
       {m.img ? (
@@ -76,6 +77,11 @@ function MediaTile({ m, w, h, theme }: { m: ResolvedMedia; w: number; h: number;
       ) : (
         <div style={{ display: "flex", width: w, height: h, alignItems: "center", justifyContent: "center", color: theme.muted, fontSize: 14 }}>
           Media unavailable
+        </div>
+      )}
+      {m.type === "gif" && (
+        <div style={{ display: "flex", position: "absolute", left: 10, bottom: 10, padding: "2px 6px", borderRadius: 4, backgroundColor: "rgba(0,0,0,0.75)", color: "#fff", fontSize: 13, fontWeight: 700 }}>
+          GIF
         </div>
       )}
       {m.type === "video" && (

@@ -7,6 +7,8 @@ import { renderPng, renderThread } from "./renderer";
 import { zipImages } from "./export/zip";
 import { extract, ExtractError } from "./adapters";
 import { z } from "zod";
+import { fileBase } from "./naming";
+import { renderMp4, VideoError } from "./video/animate";
 
 const app = new Hono();
 app.use("*", logger());
@@ -20,6 +22,7 @@ const png = (bytes: Uint8Array, name: string, sourceUrl: string) =>
     headers: {
       "Content-Type": "image/png",
       "Content-Disposition": `inline; filename="${name}"`,
+      "Access-Control-Expose-Headers": "Content-Disposition",
       "X-Ferrix-Source-Url": encodeURI(sourceUrl),
       "Cache-Control": "no-store",
     },
@@ -43,7 +46,8 @@ app.post("/api/render", async (c) => {
   const parsed = RenderRequest.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
   try {
-    return png(await renderPng(parsed.data.post, parsed.data.options), "ferrix.png", parsed.data.post.sourceUrl);
+    const { post, options } = parsed.data;
+    return png(await renderPng(post, options), `${fileBase(post)}_${options.theme}.png`, post.sourceUrl);
   } catch (err) {
     return c.json({ error: (err as Error).message }, 422);
   }
@@ -59,13 +63,34 @@ app.post("/api/render/thread", async (c) => {
     return new Response(new Uint8Array(zipImages(images, posts.map((p) => p.sourceUrl))), {
       headers: {
         "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="ferrix-thread.zip"`,
+        "Content-Disposition": `attachment; filename="${fileBase(posts[0])}_thread.zip"`,
         "X-Ferrix-Count": String(images.length),
         "Cache-Control": "no-store",
       },
     });
   } catch (err) {
     return c.json({ error: (err as Error).message }, 422);
+  }
+});
+
+app.post("/api/render/video", async (c) => {
+  const parsed = RenderRequest.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+  const { post, options } = parsed.data;
+  try {
+    const mp4 = await renderMp4(post, options);
+    return new Response(new Uint8Array(mp4), {
+      headers: {
+        "Content-Type": "video/mp4",
+        "Content-Disposition": `inline; filename="${fileBase(post)}_${options.theme}.mp4"`,
+        "X-Ferrix-Source-Url": encodeURI(post.sourceUrl),
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (err) {
+    if (err instanceof VideoError) return c.json({ error: err.message }, err.status);
+    if (err instanceof Error && /Platform/.test(err.message)) return c.json({ error: err.message }, 422);
+    throw err;
   }
 });
 

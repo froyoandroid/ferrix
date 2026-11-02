@@ -7,6 +7,7 @@ import { themes } from "./themes";
 import { resolvePost, type ResolvedPost } from "./resolve";
 import { XCard } from "./templates/x";
 import { XThreadFrame, XThreadItem } from "./templates/x-thread";
+import { fileBase } from "../naming";
 
 export interface RenderedImage {
   name: string;
@@ -25,19 +26,35 @@ async function toSvg(el: JSX.Element, width: number) {
   });
 }
 
+function rasterize(svg: string, scale: number) {
+  return new Resvg(svg, { fitTo: { mode: "zoom", value: scale } }).render();
+}
+
 function toPng(svg: string, scale: number): Uint8Array {
-  return new Resvg(svg, { fitTo: { mode: "zoom", value: scale } }).render().asPng();
+  return rasterize(svg, scale).asPng();
 }
 
 function svgHeight(svg: string) {
   return Number(/height="([\d.]+)"/.exec(svg)?.[1] ?? 0);
 }
 
-export async function renderPng(post: NormalizedPost, options: RenderOptions, badge?: string): Promise<Uint8Array> {
+export async function resolveFor(post: NormalizedPost, options: RenderOptions): Promise<ResolvedPost> {
   assertSupported(post);
-  const resolved = await resolvePost(post, options.attribution === "original");
-  const svg = await toSvg(<XCard post={resolved} options={options} theme={themes[options.theme]} badge={badge} />, options.width);
-  return toPng(svg, options.scale);
+  return resolvePost(post, options.attribution === "original");
+}
+
+async function cardSvg(resolved: ResolvedPost, options: RenderOptions, badge?: string) {
+  return toSvg(<XCard post={resolved} options={options} theme={themes[options.theme]} badge={badge} />, options.width);
+}
+
+export async function renderPng(post: NormalizedPost, options: RenderOptions, badge?: string): Promise<Uint8Array> {
+  return toPng(await cardSvg(await resolveFor(post, options), options, badge), options.scale);
+}
+
+/** Raw RGBA raster of a single card (for video compositing). */
+export async function renderRgba(resolved: ResolvedPost, options: RenderOptions) {
+  const img = rasterize(await cardSvg(resolved, options), options.scale);
+  return { width: img.width, height: img.height, pixels: new Uint8Array(img.pixels) };
 }
 
 export async function renderThread(
@@ -57,7 +74,7 @@ export async function renderThread(
   if (opts.mode === "individual") {
     return Promise.all(
       picked.map(async ({ post, pos }) => ({
-        name: `ferrix-${pad(pos)}.png`,
+        name: `${fileBase(post)}_${pad(pos)}of${pad(total)}.png`,
         png: await renderPng(post, options, num(pos)),
       })),
     );
@@ -96,7 +113,8 @@ export async function renderThread(
         </XThreadFrame>,
         options.width,
       );
-      return { name: segments.length > 1 ? `ferrix-thread-${pad(s + 1)}.png` : "ferrix-thread.png", png: toPng(svg, options.scale) };
+      const base = `${fileBase(posts[0])}_thread`;
+      return { name: segments.length > 1 ? `${base}_${pad(s + 1)}.png` : `${base}.png`, png: toPng(svg, options.scale) };
     }),
   );
 }
