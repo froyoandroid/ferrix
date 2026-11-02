@@ -31,13 +31,37 @@ export default function App() {
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [url, setUrl] = useState("");
+  const [asThread, setAsThread] = useState(false);
+  const [fetching, setFetching] = useState(false);
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-  async function render() {
+  async function fetchPost(e?: React.FormEvent) {
+    e?.preventDefault();
+    if (!url.trim()) return;
+    setError(null);
+    setFetching(true);
+    try {
+      const res = await fetch("/api/extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url.trim(), thread: asThread }),
+      });
+      const data = await res.json().catch(() => ({ error: `Request failed (${res.status})` }));
+      if (!res.ok) return setError(data.error ?? `Request failed (${res.status})`);
+      const text = JSON.stringify(data.posts.length === 1 ? data.posts[0] : data.posts, null, 2);
+      setJson(text);
+      await render(text);
+    } finally {
+      setFetching(false);
+    }
+  }
+
+  async function render(source = json) {
     setError(null);
     let input;
     try {
-      input = Input.parse(JSON.parse(json));
+      input = Input.parse(JSON.parse(source));
     } catch (e) {
       return setError((e as Error).message);
     }
@@ -75,6 +99,21 @@ export default function App() {
     <main className="mx-auto max-w-6xl p-6 font-sans">
       <h1 className="text-2xl font-bold">Ferrix</h1>
       <p className="mb-6 text-sm text-neutral-500">The message outlives the messenger.</p>
+      <form onSubmit={fetchPost} className="mb-6 flex flex-wrap items-center gap-3">
+        <input
+          className="min-w-0 flex-1 rounded border border-neutral-300 p-2 text-sm"
+          placeholder="Paste an X post URL"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          inputMode="url"
+        />
+        <label className="flex items-center gap-1 text-sm">
+          <input type="checkbox" checked={asThread} onChange={(e) => setAsThread(e.target.checked)} /> Include thread
+        </label>
+        <button className="rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-50" disabled={fetching || !url.trim()}>
+          {fetching ? "Fetching…" : "Fetch"}
+        </button>
+      </form>
       <div className="grid gap-6 md:grid-cols-2">
         <section className="flex flex-col gap-3">
           <textarea
@@ -100,7 +139,7 @@ export default function App() {
             <label className="flex items-center gap-1">
               <input type="checkbox" checked={numbering} onChange={(e) => setNumbering(e.target.checked)} /> Numbering
             </label>
-            <button className="rounded bg-black px-3 py-1 text-white disabled:opacity-50" onClick={render} disabled={busy}>
+            <button className="rounded bg-black px-3 py-1 text-white disabled:opacity-50" onClick={() => render()} disabled={busy}>
               {busy ? "Rendering…" : "Render"}
             </button>
           </div>

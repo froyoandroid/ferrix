@@ -5,6 +5,8 @@ import { secureHeaders } from "hono/secure-headers";
 import { RenderRequest, ThreadRenderRequest } from "@ferrix/shared";
 import { renderPng, renderThread } from "./renderer";
 import { zipImages } from "./export/zip";
+import { extract, ExtractError } from "./adapters";
+import { z } from "zod";
 
 const app = new Hono();
 app.use("*", logger());
@@ -22,6 +24,20 @@ const png = (bytes: Uint8Array, name: string, sourceUrl: string) =>
       "Cache-Control": "no-store",
     },
   });
+
+const ExtractRequest = z.object({ url: z.string().url().max(2048), thread: z.boolean().default(false) });
+const extractStatus = { unsupported_url: 400, not_found: 404, unavailable: 404, rate_limited: 429, upstream_error: 502 } as const;
+
+app.post("/api/extract", async (c) => {
+  const parsed = ExtractRequest.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "Provide a post URL" }, 400);
+  try {
+    return c.json({ posts: await extract(parsed.data.url, { thread: parsed.data.thread }) });
+  } catch (err) {
+    if (err instanceof ExtractError) return c.json({ error: err.message, code: err.code }, extractStatus[err.code]);
+    throw err;
+  }
+});
 
 app.post("/api/render", async (c) => {
   const parsed = RenderRequest.safeParse(await c.req.json().catch(() => null));

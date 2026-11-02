@@ -12,6 +12,7 @@ Turns public social posts (X, Threads; Facebook later) into standalone images yo
 
 ## API
 
+- `POST /api/extract` – `{ url, thread? }` → `{ posts }` (X via the public embed/syndication endpoint; `thread` walks up same-author replies)
 - `POST /api/render` – `{ post, options }` → PNG
 - `POST /api/render/thread` – `{ posts, mode: "combined" | "individual", numbering, select?, options }` → PNG, or ZIP (with `sources.json`) when there are several images
 
@@ -24,4 +25,5 @@ bun install
 bun run dev:backend     # http://localhost:8787
 bun run dev:frontend    # http://localhost:5173 (proxies /api to backend)
 bun run render:fixture  # renders backend/fixtures/*.json to backend/out/
+(cd backend && bun scripts/smoke-extract.ts <x-url> [--thread])  # live extract + render
 ```
