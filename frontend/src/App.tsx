@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { NormalizedPost, type AttributionPreset, type ThreadMode } from "@ferrix/shared";
 import { z } from "zod";
 
@@ -42,6 +42,15 @@ export default function App() {
   const [attribution, setAttribution] = useState<AttributionPreset>("original");
   const [mode, setMode] = useState<ThreadMode>("combined");
   const [numbering, setNumbering] = useState(true);
+  // Thread-only controls (mode, numbering) show only when the editor holds more than one post.
+  const jsonIsThread = useMemo(() => {
+    try {
+      const v = JSON.parse(json);
+      return Array.isArray(v) && v.length > 1;
+    } catch {
+      return false;
+    }
+  }, [json]);
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -176,10 +185,12 @@ export default function App() {
               <option value="minimal">Minimal</option>
               <option value="clean">Clean</option>
             </select>
-            <select className={sel} value={mode} onChange={(e) => setMode(e.target.value as ThreadMode)}>
-              <option value="combined">Thread: combined</option>
-              <option value="individual">Thread: individual cards</option>
-            </select>
+            {jsonIsThread && (
+              <select className={sel} value={mode} onChange={(e) => setMode(e.target.value as ThreadMode)}>
+                <option value="combined">Thread: combined</option>
+                <option value="individual">Thread: individual cards</option>
+              </select>
+            )}
             <select className={sel} value={logo} onChange={(e) => setLogo(e.target.value as "x" | "twitter" | "none")}>
               <option value="x">Logo: X</option>
               <option value="twitter">Logo: Twitter bird</option>
@@ -194,9 +205,11 @@ export default function App() {
             <label className="flex items-center gap-1">
               <input type="checkbox" checked={maskUsername} onChange={(e) => setMaskUsername(e.target.checked)} /> Censor @username
             </label>
-            <label className="flex items-center gap-1">
-              <input type="checkbox" checked={numbering} onChange={(e) => setNumbering(e.target.checked)} /> Numbering
-            </label>
+            {jsonIsThread && (
+              <label className="flex items-center gap-1">
+                <input type="checkbox" checked={numbering} onChange={(e) => setNumbering(e.target.checked)} /> Numbering
+              </label>
+            )}
             <button className="rounded bg-black px-3 py-1 text-white disabled:opacity-50" onClick={() => render()} disabled={busy}>
               {busy ? "Rendering…" : "Render"}
             </button>
