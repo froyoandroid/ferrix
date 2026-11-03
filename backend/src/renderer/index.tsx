@@ -74,7 +74,7 @@ export async function renderThread(
   if (opts.mode === "individual") {
     return Promise.all(
       picked.map(async ({ post, pos }) => ({
-        name: `${fileBase(post)}_${pad(pos)}of${pad(total)}.png`,
+        name: `${fileBase(post, options.maskUsername)}_${pad(pos)}of${pad(total)}.png`,
         png: await renderPng(post, options, num(pos)),
       })),
     );
@@ -113,7 +113,7 @@ export async function renderThread(
         </XThreadFrame>,
         options.width,
       );
-      const base = `${fileBase(posts[0])}_thread`;
+      const base = `${fileBase(posts[0], options.maskUsername)}_thread`;
       return { name: segments.length > 1 ? `${base}_${pad(s + 1)}.png` : `${base}.png`, png: toPng(svg, options.scale) };
     }),
   );

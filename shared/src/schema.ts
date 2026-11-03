@@ -37,6 +37,16 @@ const PostBase = z.object({
     text: z.string().max(LIMITS.textChars),
     media: z.array(MediaItem).max(LIMITS.mediaPerPost).default([]),
   }),
+  /** Engagement counts as shown on the platform; any may be missing (X embed API only gives likes + replies). */
+  metrics: z
+    .object({
+      replies: z.number().int().nonnegative().optional(),
+      reposts: z.number().int().nonnegative().optional(),
+      likes: z.number().int().nonnegative().optional(),
+      bookmarks: z.number().int().nonnegative().optional(),
+      views: z.number().int().nonnegative().optional(),
+    })
+    .optional(),
   timestamp: z.string().datetime({ offset: true }).optional(),
 });
 
@@ -79,6 +89,14 @@ export const RenderOptions = z.object({
   timeZone: TimeZone.default("UTC"),
   /** Max height (CSS px, before scale) of one combined-thread image before it is split. */
   maxHeight: z.number().int().min(800).max(8000).default(3200),
+  /** Engagement row (replies, reposts, likes, bookmarks, views) under the post. */
+  showMetrics: z.boolean().default(false),
+  /** Post date/time (shown with the Original preset). */
+  showDate: z.boolean().default(true),
+  /** Platform mark in the header: current X logo, the classic Twitter bird, or none. */
+  logo: z.enum(["x", "twitter", "none"]).default("x"),
+  /** Replace the middle of every @username with ****. */
+  maskUsername: z.boolean().default(false),
 });
 export type RenderOptions = z.infer<typeof RenderOptions>;
 

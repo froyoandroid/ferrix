@@ -77,6 +77,11 @@ function base(t: SynTweet): QuotedPost {
     },
     content: { text: visibleText(t), media: media(t) },
     timestamp: new Date(t.created_at).toISOString(),
+    metrics: {
+      replies: t.reply_count ?? t.conversation_count,
+      reposts: t.retweet_count,
+      likes: t.favorite_count,
+    },
   };
 }
 

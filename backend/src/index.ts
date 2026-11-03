@@ -47,7 +47,7 @@ app.post("/api/render", async (c) => {
   if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
   try {
     const { post, options } = parsed.data;
-    return png(await renderPng(post, options), `${fileBase(post)}_${options.theme}.png`, post.sourceUrl);
+    return png(await renderPng(post, options), `${fileBase(post, options.maskUsername)}_${options.theme}.png`, post.sourceUrl);
   } catch (err) {
     return c.json({ error: (err as Error).message }, 422);
   }
@@ -63,7 +63,7 @@ app.post("/api/render/thread", async (c) => {
     return new Response(new Uint8Array(zipImages(images, posts.map((p) => p.sourceUrl))), {
       headers: {
         "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="${fileBase(posts[0])}_thread.zip"`,
+        "Content-Disposition": `attachment; filename="${fileBase(posts[0], opts.options.maskUsername)}_thread.zip"`,
         "X-Ferrix-Count": String(images.length),
         "Cache-Control": "no-store",
       },
@@ -82,7 +82,7 @@ app.post("/api/render/video", async (c) => {
     return new Response(new Uint8Array(mp4), {
       headers: {
         "Content-Type": "video/mp4",
-        "Content-Disposition": `inline; filename="${fileBase(post)}_${options.theme}.mp4"`,
+        "Content-Disposition": `inline; filename="${fileBase(post, options.maskUsername)}_${options.theme}.mp4"`,
         "X-Ferrix-Source-Url": encodeURI(post.sourceUrl),
         "Cache-Control": "no-store",
       },

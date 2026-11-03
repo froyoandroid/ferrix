@@ -36,6 +36,10 @@ export interface SynTweet {
     is_blue_verified?: boolean;
   };
   mediaDetails?: SynMedia[];
+  favorite_count?: number;
+  conversation_count?: number;
+  retweet_count?: number;
+  reply_count?: number;
   photos?: unknown[];
   video?: { poster?: string };
   in_reply_to_status_id_str?: string;

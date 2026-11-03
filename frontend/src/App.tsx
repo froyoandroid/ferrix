@@ -9,6 +9,7 @@ const sample = [
     author: { name: "Ferrix", username: "ferrix" },
     content: { text: "The message outlives the messenger. 🧵", media: [] },
     timestamp: "2026-11-02T18:30:00Z",
+    metrics: { replies: 12, reposts: 48, likes: 1280, views: 20400 },
   },
   {
     platform: "x",
@@ -16,6 +17,7 @@ const sample = [
     author: { name: "Ferrix", username: "ferrix" },
     content: { text: "Paste one post object, or an array of posts for a thread. #ferrix", media: [] },
     timestamp: "2026-11-02T18:31:00Z",
+    metrics: { replies: 3, likes: 210 },
   },
 ];
 
@@ -48,7 +50,12 @@ export default function App() {
   const [fetching, setFetching] = useState(false);
   const [single, setSingle] = useState<Single | null>(null);
   const [encoding, setEncoding] = useState(false);
+  const [showMetrics, setShowMetrics] = useState(false);
+  const [showDate, setShowDate] = useState(true);
+  const [logo, setLogo] = useState<"x" | "twitter" | "none">("x");
+  const [maskUsername, setMaskUsername] = useState(false);
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const renderOptions = () => ({ theme, attribution, timeZone, showMetrics, showDate, logo, maskUsername });
 
   async function fetchPost(e?: React.FormEvent) {
     e?.preventDefault();
@@ -79,7 +86,7 @@ export default function App() {
     } catch (e) {
       return setError((e as Error).message);
     }
-    const options = { theme, attribution, timeZone };
+    const options = renderOptions();
     const isThread = Array.isArray(input) && input.length > 1;
     setSingle(isThread ? null : Array.isArray(input) ? input[0] : input);
     const body = isThread
@@ -113,7 +120,7 @@ export default function App() {
       const res = await fetch("/api/render/video", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ post: single, options: { theme, attribution, timeZone } }),
+        body: JSON.stringify({ post: single, options: renderOptions() }),
       });
       if (!res.ok) return setError((await res.json().catch(() => null))?.error ?? `Video render failed (${res.status})`);
       const url = URL.createObjectURL(await res.blob());
@@ -129,7 +136,7 @@ export default function App() {
 
   useEffect(() => {
     render();
-  }, [theme, attribution, mode, numbering]);
+  }, [theme, attribution, mode, numbering, showMetrics, showDate, logo, maskUsername]);
 
   const sel = "rounded border border-neutral-300 bg-white p-1 dark:bg-neutral-900";
   return (
@@ -173,6 +180,20 @@ export default function App() {
               <option value="combined">Thread: combined</option>
               <option value="individual">Thread: individual cards</option>
             </select>
+            <select className={sel} value={logo} onChange={(e) => setLogo(e.target.value as "x" | "twitter" | "none")}>
+              <option value="x">Logo: X</option>
+              <option value="twitter">Logo: Twitter bird</option>
+              <option value="none">Logo: none</option>
+            </select>
+            <label className="flex items-center gap-1">
+              <input type="checkbox" checked={showMetrics} onChange={(e) => setShowMetrics(e.target.checked)} /> Metrics
+            </label>
+            <label className="flex items-center gap-1">
+              <input type="checkbox" checked={showDate} onChange={(e) => setShowDate(e.target.checked)} /> Date
+            </label>
+            <label className="flex items-center gap-1">
+              <input type="checkbox" checked={maskUsername} onChange={(e) => setMaskUsername(e.target.checked)} /> Censor @username
+            </label>
             <label className="flex items-center gap-1">
               <input type="checkbox" checked={numbering} onChange={(e) => setNumbering(e.target.checked)} /> Numbering
             </label>

@@ -2,7 +2,7 @@ import type { RenderOptions } from "@ferrix/shared";
 import type { Theme } from "../themes";
 import type { ResolvedPost } from "../resolve";
 import { RichText } from "../richtext";
-import { Avatar, MediaGrid, NameLine, QuoteCard, shortDate } from "./x";
+import { Avatar, MediaGrid, MetricsRow, NameLine, QuoteCard, handle, shortDate } from "./x";
 
 const PAD = 20;
 const AVATAR = 40;
@@ -26,7 +26,7 @@ export function XThreadItem({
 }) {
   const original = options.attribution === "original";
   const showIdentity = options.attribution !== "clean";
-  const date = original ? shortDate(post.timestamp, options.timeZone) : null;
+  const date = original && options.showDate ? shortDate(post.timestamp, options.timeZone) : null;
   const leftCol = original ? AVATAR + COL_GAP : 0;
   const contentWidth = options.width - PAD * 2 - leftCol - 2;
   const line = { display: "flex", width: 2, backgroundColor: theme.border } as const;
@@ -55,9 +55,9 @@ export function XThreadItem({
         {(showIdentity || number) && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 15 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              {showIdentity && <NameLine post={post} theme={theme} fontSize={15} />}
+              {showIdentity && <NameLine post={post} theme={theme} options={options} fontSize={15} />}
               {showIdentity && post.author.username && post.author.name && (
-                <div style={{ display: "flex", color: theme.muted }}>{`@${post.author.username}`}</div>
+                <div style={{ display: "flex", color: theme.muted }}>{handle(post, options)}</div>
               )}
               {date && <div style={{ display: "flex", color: theme.muted }}>{`· ${date}`}</div>}
             </div>
@@ -67,6 +67,11 @@ export function XThreadItem({
         {post.content.text.trim() && <RichText text={post.content.text} theme={theme} fontSize={17} />}
         <MediaGrid media={post.resolvedMedia} width={contentWidth} theme={theme} />
         {post.resolvedQuote && <QuoteCard quote={post.resolvedQuote} options={options} theme={theme} width={contentWidth + 2} />}
+        {options.showMetrics && post.metrics && (
+          <div style={{ display: "flex", paddingTop: 4, paddingRight: 24 }}>
+            <MetricsRow metrics={post.metrics} theme={theme} fontSize={13} />
+          </div>
+        )}
       </div>
     </div>
   );
