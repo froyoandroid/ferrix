@@ -102,7 +102,7 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
   const [shareNote, setShareNote] = useState<string | null>(null);
   /** Desktop paste flow: which images exist, which one is on the clipboard, whether copying failed. */
   const [paste, setPaste] = useState<{ count: number; copied: number | null; failed: boolean } | null>(null);
-  const [caption, setCaption] = useState(() => (initial.settings.attribution === "clean" ? "" : `Source: ${initial.posts[0].sourceUrl}`));
+  const [caption, setCaption] = useState("");
   const lastExport = useRef<{ key: string; url: string; name: string } | null>(null);
   const [parts, setParts] = useState<{ name: string; url: string; size: number }[]>([]);
 
@@ -482,12 +482,9 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
               value={caption}
               maxLength={280}
               onChange={(e) => setCaption(e.target.value)}
-              placeholder="Caption (optional)"
+              placeholder="Write a caption (optional)"
             />
-            <div className="flex justify-between text-[11px] text-muted">
-              <button className="hover:text-ink" onClick={() => setCaption(`Source: ${posts[0].sourceUrl}`)}>Add source link</button>
-              <span className="tabular-nums">{caption.length}/280</span>
-            </div>
+            {caption.length > 0 && <div className="text-right text-[11px] tabular-nums text-muted">{caption.length}/280</div>}
             <button
               onClick={shareToX}
               disabled={sharing || (isThread && !select.length)}
