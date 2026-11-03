@@ -46,16 +46,27 @@ async function previewServer(req: PreviewReq, signal: AbortSignal): Promise<stri
   return req.path === "/api/preview/thread" ? ((await res.json()) as { segments: string[] }).segments : [await res.text()];
 }
 
-async function exportLocal(thread: ThreadExport | null, post: NormalizedPost, options: RenderOptions, format: "png" | "webp") {
-  const { renderer, rasterize, canRasterize, zipImages, fileBase } = await engineModule();
+/** Rasterized files for a request, in export order. */
+async function renderFiles(thread: ThreadExport | null, post: NormalizedPost, options: RenderOptions, format: "png" | "webp") {
+  const { renderer, rasterize, canRasterize } = await engineModule();
   const svgs = thread ? await renderer.thread(thread.posts, thread) : [await renderer.card(post, options)];
   if (!svgs.every((i) => canRasterize(i.svg, options.scale))) throw new Error("Image is too large for this browser's canvas");
-  const files = [];
+  const files: { name: string; data: Uint8Array }[] = [];
   for (const img of svgs) files.push({ name: img.name.replace(/\.png$/, `.${format}`), data: await rasterize(img.svg, options.scale, format) });
+  return files;
+}
+
+async function exportLocal(thread: ThreadExport | null, post: NormalizedPost, options: RenderOptions, format: "png" | "webp") {
+  const { zipImages, fileBase } = await engineModule();
+  const files = await renderFiles(thread, post, options, format);
   if (files.length === 1) return { blob: new Blob([new Uint8Array(files[0].data)], { type: `image/${format}` }), name: files[0].name };
   const zip = zipImages(files, (thread?.posts ?? [post]).map((p) => p.sourceUrl));
   return { blob: new Blob([new Uint8Array(zip)], { type: "application/zip" }), name: `${fileBase(thread!.posts[0], options.maskUsername)}_thread.zip` };
 }
+
+/** X takes at most 4 images per post. */
+const X_MAX_IMAGES = 4;
+const intentUrl = (text: string) => `https://x.com/intent/post?text=${encodeURIComponent(text)}`;
 
 async function exportServer(thread: ThreadExport | null, post: NormalizedPost, options: RenderOptions) {
   const res = thread ? await api("/api/render/thread", thread) : await api("/api/render", { post, options });
@@ -84,6 +95,10 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [drag, setDrag] = useState<number | null>(null);
   const [engine, setEngine] = useState<"browser" | "server">("browser");
+  const [sharing, setSharing] = useState(false);
+  const lastShare = useRef<{ key: string; files: ReturnType<typeof renderFiles> } | null>(null);
+  const [shareNote, setShareNote] = useState<string | null>(null);
+  const [caption, setCaption] = useState(() => (initial.settings.attribution === "clean" ? "" : `Source: ${initial.posts[0].sourceUrl}`));
   const lastExport = useRef<{ key: string; url: string; name: string } | null>(null);
 
   // Persist the whole draft so a reload or a later visit picks up where the user left off.
@@ -207,6 +222,68 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
     a.href = out.url;
     a.download = out.name;
     a.click();
+  }
+
+  /**
+   * Share to X without any X login: the user posts it themselves.
+   * - Devices with the Web Share API for files (most phones): hand the images and caption to the
+   *   share sheet, where the user picks X.
+   * - Elsewhere: copy the image to the clipboard and open X's composer with the caption prefilled;
+   *   the user pastes the image (Ctrl/Cmd+V). Both the clipboard write and the window open happen
+   *   inside the click, before any await, so browsers allow them.
+   */
+  function shareToX() {
+    if (isThread && !select.length) return;
+    setShareNote(null);
+    setError(null);
+    const options = RenderOptions.parse({ ...renderOptions, scale: s.scale });
+    const thread = isThread ? { posts: ordered, mode: s.mode, numbering: s.numbering, select, options } : null;
+    const key = JSON.stringify([thread ?? posts[0], options]);
+    const files =
+      lastShare.current?.key === key ? lastShare.current.files : renderFiles(thread, posts[0], options, "png");
+    lastShare.current = { key, files };
+    files.catch(() => (lastShare.current = null));
+    const asFiles = files.then((fs) => fs.slice(0, X_MAX_IMAGES).map((f) => new File([new Uint8Array(f.data)], f.name, { type: "image/png" })));
+    const probe = new File([new Uint8Array(8)], "probe.png", { type: "image/png" });
+    const canShareFiles = typeof navigator.canShare === "function" && navigator.canShare({ files: [probe] });
+    setSharing(true);
+
+    if (canShareFiles) {
+      asFiles
+        .then(async (fs) => {
+          // Rendering can outlast the tap's activation on some browsers (NotAllowedError); a second tap then shares at once.
+          await navigator.share({ files: fs, text: caption || undefined });
+          if ((await files).length > X_MAX_IMAGES) setShareNote(`X takes 4 images per post. Shared the first 4; download the ZIP for the rest.`);
+        })
+        .catch((e) => {
+          if ((e as Error).name === "AbortError") return;
+          if ((e as Error).name === "NotAllowedError") setShareNote("Images are ready. Tap Share to X again to open the share sheet.");
+          else setError((e as Error).message);
+        })
+        .finally(() => setSharing(false));
+      return;
+    }
+
+    const blob = files.then((fs) => new Blob([new Uint8Array(fs[0].data)], { type: "image/png" }));
+    const copied =
+      typeof ClipboardItem !== "undefined" && navigator.clipboard?.write
+        ? navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]).then(() => true, () => false)
+        : Promise.resolve(false);
+    // No "noopener" feature string: with it, window.open returns null and we could not tell a blocked pop-up.
+    const win = window.open(intentUrl(caption), "_blank");
+    if (win) win.opener = null;
+    Promise.all([files, copied])
+      .then(([fs, ok]) => {
+        const paste = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘V" : "Ctrl+V";
+        const more = fs.length > 1 ? ` X pastes one image at a time; download the ${fs.length} images for the rest.` : "";
+        setShareNote(
+          ok
+            ? `Image copied. Paste it into the X post with ${paste}.${more}${win ? "" : " Allow pop-ups to open X automatically."}`
+            : `Your browser blocked copying the image. Download it and attach it in X.${win ? "" : " Allow pop-ups to open X automatically."}`,
+        );
+      })
+      .catch((e) => setError((e as Error).message))
+      .finally(() => setSharing(false));
   }
 
   function applyJson() {
@@ -433,6 +510,34 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
             >
               {exporting ? "Preparing…" : exportCount > 1 ? `Download ${exportCount} images (ZIP)` : "Download image"}
             </button>
+          </Section>
+
+          <Section title="Share to X">
+            <p className="text-xs leading-relaxed text-muted">
+              No X login needed. On phones the share sheet opens with the image; on desktop the image is copied and X opens with your caption.
+            </p>
+            <textarea
+              className="h-20 w-full resize-none rounded-lg border border-line bg-paper p-2.5 text-[13px] leading-snug outline-none focus:border-ink/40"
+              value={caption}
+              maxLength={280}
+              onChange={(e) => setCaption(e.target.value)}
+              placeholder="Caption (optional)"
+            />
+            <div className="flex justify-between text-[11px] text-muted">
+              <button className="hover:text-ink" onClick={() => setCaption(`Source: ${posts[0].sourceUrl}`)}>Add source link</button>
+              <span className="tabular-nums">{caption.length}/280</span>
+            </div>
+            <button
+              onClick={shareToX}
+              disabled={sharing || (isThread && !select.length)}
+              className="flex items-center justify-center gap-2 rounded-lg border border-ink px-4 py-2.5 text-sm font-medium transition-colors hover:bg-ink hover:text-paper disabled:border-line disabled:text-muted"
+            >
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" aria-hidden>
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+              </svg>
+              {sharing ? "Preparing…" : "Share to X"}
+            </button>
+            {shareNote && <p className="rounded-lg bg-canvas px-3 py-2 text-xs leading-relaxed">{shareNote}</p>}
           </Section>
 
           <Section title="Post data" defaultOpen={false}>
