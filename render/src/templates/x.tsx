@@ -120,21 +120,41 @@ export function MetricsRow({ metrics, theme, fontSize = 15 }: { metrics: Resolve
   );
 }
 
-function MediaTile({ m, w, h, theme }: { m: ResolvedMedia; w: number; h: number; theme: Theme }) {
+type MediaOpts = Pick<RenderOptions, "mediaAspect" | "altText">;
+const ASPECT: Record<Exclude<RenderOptions["mediaAspect"], "auto">, number> = { "16:9": 9 / 16, "3:2": 2 / 3, "1:1": 1, "4:5": 5 / 4 };
+
+/** Cover-fit by hand so the crop can follow the focus point (Satori has no object-position). */
+function CoverImage({ m, w, h }: { m: ResolvedMedia; w: number; h: number }) {
+  const img = m.img!;
+  const scale = Math.max(w / img.width, h / img.height);
+  const dw = Math.ceil(img.width * scale);
+  const dh = Math.ceil(img.height * scale);
+  const left = -Math.round((dw - w) * (m.focusX ?? 0.5));
+  const top = -Math.round((dh - h) * (m.focusY ?? 0.5));
+  return <img src={img.src} width={dw} height={dh} style={{ position: "absolute", left, top }} />;
+}
+
+function Badge({ children, left }: { children: string; left: number }) {
+  return (
+    <div style={{ display: "flex", position: "absolute", left, bottom: 10, padding: "2px 6px", borderRadius: 4, backgroundColor: "rgba(0,0,0,0.75)", color: "#fff", fontSize: 13, fontWeight: 700 }}>
+      {children}
+    </div>
+  );
+}
+
+function MediaTile({ m, w, h, theme, opts }: { m: ResolvedMedia; w: number; h: number; theme: Theme; opts: MediaOpts }) {
+  const alt = opts.altText === "badge" && Boolean(m.altText?.trim());
   return (
     <div style={{ display: "flex", position: "relative", width: w, height: h, backgroundColor: theme.media, overflow: "hidden" }}>
       {m.img ? (
-        <img src={m.img.src} width={w} height={h} style={{ objectFit: "cover" }} />
+        <CoverImage m={m} w={w} h={h} />
       ) : (
         <div style={{ display: "flex", width: w, height: h, alignItems: "center", justifyContent: "center", color: theme.muted, fontSize: 14 }}>
           Media unavailable
         </div>
       )}
-      {m.type === "gif" && (
-        <div style={{ display: "flex", position: "absolute", left: 10, bottom: 10, padding: "2px 6px", borderRadius: 4, backgroundColor: "rgba(0,0,0,0.75)", color: "#fff", fontSize: 13, fontWeight: 700 }}>
-          GIF
-        </div>
-      )}
+      {m.type === "gif" && <Badge left={10}>GIF</Badge>}
+      {alt && <Badge left={m.type === "gif" ? 54 : 10}>ALT</Badge>}
       {m.type === "video" && (
         <div style={{ display: "flex", position: "absolute", left: 0, top: 0, width: w, height: h, alignItems: "center", justifyContent: "center" }}>
           <div style={{ display: "flex", width: 56, height: 56, borderRadius: 9999, backgroundColor: theme.accent, alignItems: "center", justifyContent: "center", border: "3px solid #fff" }}>
@@ -148,37 +168,42 @@ function MediaTile({ m, w, h, theme }: { m: ResolvedMedia; w: number; h: number;
   );
 }
 
-/** X-style media grid: 1 natural (clamped), 2 side by side, 3 one big + two stacked, 4 as 2×2. */
-export function MediaGrid({ media, width, theme, flush }: { media: ResolvedMedia[]; width: number; theme: Theme; flush?: boolean }) {
+/**
+ * X-style media grid: 1 natural (clamped), 2 side by side, 3 one big + two stacked, 4 as 2x2.
+ * A fixed mediaAspect sets the whole grid's frame; tiles cover-crop around each item's focus.
+ */
+export function MediaGrid({ media, width, theme, flush, options }: { media: ResolvedMedia[]; width: number; theme: Theme; flush?: boolean; options: MediaOpts }) {
   if (!media.length) return null;
   const n = media.length;
   let height: number;
-  if (n === 1) {
+  if (options.mediaAspect !== "auto") height = Math.round(width * ASPECT[options.mediaAspect]);
+  else if (n === 1) {
     const m = media[0];
     const ratio = m.img ? m.img.height / m.img.width : m.height && m.width ? m.height / m.width : 9 / 16;
     height = Math.round(width * Math.min(Math.max(ratio, 0.5), 1.25));
   } else {
     height = Math.round((width * 9) / 16);
   }
-  const half = (width - GAP) / 2;
-  const halfH = (height - GAP) / 2;
+  const half = Math.floor((width - GAP) / 2);
+  const halfH = Math.floor((height - GAP) / 2);
+  const tile = (i: number, w: number, h: number) => <MediaTile m={media[i]} w={w} h={h} theme={theme} opts={options} />;
 
   let body;
-  if (n === 1) body = <MediaTile m={media[0]} w={width} h={height} theme={theme} />;
+  if (n === 1) body = tile(0, width, height);
   else if (n === 2)
     body = (
       <div style={{ display: "flex", gap: GAP }}>
-        <MediaTile m={media[0]} w={half} h={height} theme={theme} />
-        <MediaTile m={media[1]} w={half} h={height} theme={theme} />
+        {tile(0, half, height)}
+        {tile(1, half, height)}
       </div>
     );
   else if (n === 3)
     body = (
       <div style={{ display: "flex", gap: GAP }}>
-        <MediaTile m={media[0]} w={half} h={height} theme={theme} />
+        {tile(0, half, height)}
         <div style={{ display: "flex", flexDirection: "column", gap: GAP }}>
-          <MediaTile m={media[1]} w={half} h={halfH} theme={theme} />
-          <MediaTile m={media[2]} w={half} h={halfH} theme={theme} />
+          {tile(1, half, halfH)}
+          {tile(2, half, halfH)}
         </div>
       </div>
     );
@@ -186,19 +211,31 @@ export function MediaGrid({ media, width, theme, flush }: { media: ResolvedMedia
     body = (
       <div style={{ display: "flex", flexDirection: "column", gap: GAP }}>
         <div style={{ display: "flex", gap: GAP }}>
-          <MediaTile m={media[0]} w={half} h={halfH} theme={theme} />
-          <MediaTile m={media[1]} w={half} h={halfH} theme={theme} />
+          {tile(0, half, halfH)}
+          {tile(1, half, halfH)}
         </div>
         <div style={{ display: "flex", gap: GAP }}>
-          <MediaTile m={media[2]} w={half} h={halfH} theme={theme} />
-          <MediaTile m={media[3]} w={half} h={halfH} theme={theme} />
+          {tile(2, half, halfH)}
+          {tile(3, half, halfH)}
         </div>
       </div>
     );
 
-  return (
+  const grid = (
     <div style={flush ? { display: "flex", width } : { display: "flex", borderRadius: RADIUS, border: `1px solid ${theme.border}`, overflow: "hidden", width: width + 2 }}>
       {body}
+    </div>
+  );
+  const captions = options.altText === "caption" ? media.map((m, i) => ({ i, t: m.altText?.trim() })).filter((c) => c.t) : [];
+  if (!captions.length) return grid;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {grid}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, color: theme.muted, padding: flush ? "0 12px 10px" : "0 2px" }}>
+        {captions.map((c) => (
+          <div key={c.i} style={{ display: "flex" }}>{`${n > 1 ? `Image ${c.i + 1}: ` : "Alt: "}${c.t}`}</div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -240,16 +277,16 @@ export function QuoteCard({ quote, options, theme, width }: { quote: ResolvedQuo
           {hasText && <RichText text={quote.content.text} theme={theme} fontSize={15} />}
         </div>
       )}
-      {quote.resolvedMedia.length > 0 && <QuoteMedia media={quote.resolvedMedia} width={inner} theme={theme} />}
+      {quote.resolvedMedia.length > 0 && <QuoteMedia media={quote.resolvedMedia} width={inner} theme={theme} options={options} />}
     </div>
   );
 }
 
-function QuoteMedia({ media, width, theme }: { media: ResolvedMedia[]; width: number; theme: Theme }) {
+function QuoteMedia({ media, width, theme, options }: { media: ResolvedMedia[]; width: number; theme: Theme; options: MediaOpts }) {
   // Same grid as the main post but borderless and square-cornered, flush with the quote box.
   return (
     <div style={{ display: "flex", marginTop: -1, marginLeft: -1 }}>
-      <MediaGrid media={media} width={width} theme={theme} flush />
+      <MediaGrid media={media} width={width} theme={theme} flush options={options} />
     </div>
   );
 }
@@ -294,7 +331,7 @@ export function XCard({
         </div>
       )}
       {post.content.text.trim() && <RichText text={post.content.text} theme={theme} fontSize={20} />}
-      <MediaGrid media={post.resolvedMedia} width={contentWidth} theme={theme} />
+      <MediaGrid media={post.resolvedMedia} width={contentWidth} theme={theme} options={options} />
       {post.resolvedQuote && <QuoteCard quote={post.resolvedQuote} options={options} theme={theme} width={contentWidth + 2} />}
       {ts && <div style={{ display: "flex", fontSize: 15, color: theme.muted }}>{ts}</div>}
       {options.showMetrics && post.metrics && (

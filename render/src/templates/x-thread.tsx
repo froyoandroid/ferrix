@@ -65,7 +65,7 @@ export function XThreadItem({
           </div>
         )}
         {post.content.text.trim() && <RichText text={post.content.text} theme={theme} fontSize={17} />}
-        <MediaGrid media={post.resolvedMedia} width={contentWidth} theme={theme} />
+        <MediaGrid media={post.resolvedMedia} width={contentWidth} theme={theme} options={options} />
         {post.resolvedQuote && <QuoteCard quote={post.resolvedQuote} options={options} theme={theme} width={contentWidth + 2} />}
         {options.showMetrics && post.metrics && (
           <div style={{ display: "flex", paddingTop: 4, paddingRight: 24 }}>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RenderOptions, type NormalizedPost, type ThreadMode } from "@ferrix/shared";
 import { Section, Row, Toggle, Segmented } from "./ui";
+import { MediaPanel } from "./Media";
 import {
   api,
   errorText,
@@ -59,9 +60,10 @@ async function renderFiles(thread: ThreadExport | null, post: NormalizedPost, op
 async function exportLocal(thread: ThreadExport | null, post: NormalizedPost, options: RenderOptions, format: "png" | "webp") {
   const { zipImages, fileBase } = await engineModule();
   const files = await renderFiles(thread, post, options, format);
-  if (files.length === 1) return { blob: new Blob([new Uint8Array(files[0].data)], { type: `image/${format}` }), name: files[0].name };
+  const parts = files.map((f) => ({ name: f.name, blob: new Blob([new Uint8Array(f.data)], { type: `image/${format}` }) }));
+  if (parts.length === 1) return { ...parts[0], parts };
   const zip = zipImages(files, (thread?.posts ?? [post]).map((p) => p.sourceUrl));
-  return { blob: new Blob([new Uint8Array(zip)], { type: "application/zip" }), name: `${fileBase(thread!.posts[0], options.maskUsername)}_thread.zip` };
+  return { blob: new Blob([new Uint8Array(zip)], { type: "application/zip" }), name: `${fileBase(thread!.posts[0], options.maskUsername)}_thread.zip`, parts };
 }
 
 /** X takes at most 4 images per post. */
@@ -100,6 +102,7 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
   const [shareNote, setShareNote] = useState<string | null>(null);
   const [caption, setCaption] = useState(() => (initial.settings.attribution === "clean" ? "" : `Source: ${initial.posts[0].sourceUrl}`));
   const lastExport = useRef<{ key: string; url: string; name: string } | null>(null);
+  const [parts, setParts] = useState<{ name: string; url: string; size: number }[]>([]);
 
   // Persist the whole draft so a reload or a later visit picks up where the user left off.
   useEffect(() => {
@@ -108,6 +111,8 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
   }, [draft]);
 
   const isThread = posts.length > 1;
+  const mediaIdx = isThread ? focus : 0;
+  const mediaPost = posts[mediaIdx] ?? posts[0];
   const ordered = useMemo(() => order.map((i) => posts[i]), [order, posts]);
   // 1-based positions in the current order that are selected for output.
   const select = useMemo(() => order.map((i, k) => (selected[i] ? k + 1 : 0)).filter(Boolean), [order, selected]);
@@ -125,8 +130,10 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
       maskUsername: s.maskUsername,
       width: s.width,
       maxHeight: s.maxHeight,
+      mediaAspect: s.mediaAspect,
+      altText: s.altText,
     }),
-    [s.theme, s.attribution, timeZone, s.showDate, s.showMetrics, s.logo, s.maskUsername, s.width, s.maxHeight],
+    [s.theme, s.attribution, timeZone, s.showDate, s.showMetrics, s.logo, s.maskUsername, s.width, s.maxHeight, s.mediaAspect, s.altText],
   );
 
   // What the preview shows. Resolution (scale) is not part of it: it only affects the export.
@@ -189,6 +196,14 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewReq]);
 
+  // Per-file links belong to one export; drop them once the output would differ.
+  useEffect(() => {
+    setParts((old) => {
+      old.forEach((p) => URL.revokeObjectURL(p.url));
+      return [];
+    });
+  }, [renderOptions, s.scale, s.format, s.mode, s.numbering, select, ordered]);
+
   async function download() {
     if (isThread && !select.length) return;
     const options = RenderOptions.parse({ ...renderOptions, scale: s.scale });
@@ -202,7 +217,10 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
         let blob: Blob;
         let name: string;
         try {
-          ({ blob, name } = await exportLocal(thread, posts[0], options, s.format));
+          const local = await exportLocal(thread, posts[0], options, s.format);
+          ({ blob, name } = local);
+          parts.forEach((p) => URL.revokeObjectURL(p.url));
+          setParts(local.parts.length > 1 ? local.parts.map((p) => ({ name: p.name, url: URL.createObjectURL(p.blob), size: p.blob.size })) : []);
         } catch (e) {
           if (s.format !== "png") throw e;
           console.warn("Browser export failed, using server", e);
@@ -412,7 +430,7 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
                       <div
                         onClick={() => setFocus(i)}
                         className={`flex h-[116px] w-48 cursor-grab flex-col gap-1.5 rounded-lg border p-2.5 text-left transition-colors active:cursor-grabbing ${
-                          focus === i && s.mode === "individual" ? "border-ink bg-paper" : "border-line bg-paper/40 hover:border-ink/40"
+                          focus === i ? "border-ink bg-paper" : "border-line bg-paper/40 hover:border-ink/40"
                         } ${selected[i] ? "" : "opacity-45"}`}
                       >
                         <div className="flex items-center justify-between text-[11px] text-muted">
@@ -494,6 +512,22 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
             </Row>
           </Section>
 
+          {mediaPost.content.media.length > 0 && (
+            <Section title="Media">
+              <MediaPanel
+                media={mediaPost.content.media}
+                label={isThread ? `Media of post ${posOf(mediaIdx)} of ${posts.length}. Pick another card in the thread strip to edit its media.` : undefined}
+                aspect={s.mediaAspect}
+                altMode={s.altText}
+                onAspect={(v) => set("mediaAspect", v)}
+                onAltMode={(v) => set("altText", v)}
+                onChange={(media) =>
+                  setDraft((d) => ({ ...d, posts: d.posts.map((p, i) => (i === mediaIdx ? { ...p, content: { ...p.content, media } } : p)) }))
+                }
+              />
+            </Section>
+          )}
+
           {isThread && (
             <Section title="Thread layout">
               <Segmented full value={s.mode} onChange={(v) => set("mode", v)} items={[{ id: "combined", label: "Combined" }, { id: "individual", label: "Individual cards" }]} />
@@ -520,6 +554,19 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
             >
               {exporting ? "Preparing…" : exportCount > 1 ? `Download ${exportCount} images (ZIP)` : "Download image"}
             </button>
+            {parts.length > 1 && (
+              <div className="flex flex-col gap-1 rounded-lg border border-line bg-paper p-2">
+                <span className="px-1 text-[11px] text-muted">Or save them one by one</span>
+                {parts.map((p, i) => (
+                  <a key={p.url} href={p.url} download={p.name} className="flex items-center justify-between gap-2 rounded-md px-1.5 py-1 text-xs hover:bg-canvas">
+                    <span className="truncate">
+                      {i + 1}. {p.name}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-muted">{Math.max(1, Math.round(p.size / 1024))} KB ↓</span>
+                  </a>
+                ))}
+              </div>
+            )}
           </Section>
 
           <Section title="Share to X">

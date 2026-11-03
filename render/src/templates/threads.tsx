@@ -68,7 +68,7 @@ export function ThreadsCard({ post, options, theme, badge }: { post: ResolvedPos
         </div>
       )}
       {post.content.text.trim() && <RichText text={post.content.text} theme={theme} fontSize={18} />}
-      <MediaGrid media={post.resolvedMedia} width={contentWidth} theme={theme} />
+      <MediaGrid media={post.resolvedMedia} width={contentWidth} theme={theme} options={options} />
       {options.showMetrics && shown.length > 0 && (
         <div style={{ display: "flex", gap: 22, paddingTop: 4, color: theme.muted, fontSize: 15 }}>
           {shown.map((k) => (

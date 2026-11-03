@@ -16,6 +16,11 @@ export const MediaItem = z.object({
   altText: z.string().max(2_000).optional(),
   width: z.number().int().positive().optional(),
   height: z.number().int().positive().optional(),
+  /** Crop focus for cover-fitted tiles, 0 (left/top) to 1 (right/bottom). Default centre. */
+  focusX: z.number().min(0).max(1).optional(),
+  focusY: z.number().min(0).max(1).optional(),
+  /** Left out of the rendered image (user choice in the editor). */
+  hidden: z.boolean().optional(),
 });
 export type MediaItem = z.infer<typeof MediaItem>;
 
@@ -95,6 +100,10 @@ export const RenderOptions = z.object({
   logo: z.enum(["x", "twitter", "none"]).default("x"),
   /** Replace the middle of every @username with ****. */
   maskUsername: z.boolean().default(false),
+  /** Media frame: "auto" keeps a single image's own ratio (clamped); otherwise every layout uses this ratio. */
+  mediaAspect: z.enum(["auto", "16:9", "3:2", "1:1", "4:5"]).default("auto"),
+  /** Alt text: hidden, an ALT badge on the tile (like X), or written under the media. */
+  altText: z.enum(["off", "badge", "caption"]).default("badge"),
 });
 export type RenderOptions = z.infer<typeof RenderOptions>;
 
