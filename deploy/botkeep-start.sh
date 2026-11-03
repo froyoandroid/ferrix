@@ -1,16 +1,23 @@
 #!/bin/sh
 # Botkeep start command: sh deploy/botkeep-start.sh
 # Botkeep source ZIPs must be text only, so binary assets (fonts) ship as
-# <file>.b64 and are decoded here. The archive also ships a prebuilt frontend/dist;
+# <file>.b64.NN parts and are decoded here. The archive also ships a prebuilt frontend/dist;
 # the backend serves it (standalone mode, see backend/src/standalone.ts).
 set -e
 cd "$(dirname "$0")/.."
 bun -e '
-const { Glob } = Bun;
-for await (const f of new Glob("**/*.b64").scan({ cwd: ".", dot: false })) {
+const parts = new Map();
+for await (const f of new Bun.Glob("**/*.b64.*").scan({ cwd: "." })) {
   if (f.startsWith("node_modules/")) continue;
-  const out = f.slice(0, -4);
-  await Bun.write(out, Buffer.from(await Bun.file(f).text(), "base64"));
+  const i = f.lastIndexOf(".b64.");
+  const out = f.slice(0, i);
+  (parts.get(out) ?? parts.set(out, []).get(out)).push(f);
+}
+for (const [out, fs] of parts) {
+  fs.sort();
+  let b64 = "";
+  for (const f of fs) b64 += await Bun.file(f).text();
+  await Bun.write(out, Buffer.from(b64, "base64"));
 }'
 bun install --frozen-lockfile
 cd backend

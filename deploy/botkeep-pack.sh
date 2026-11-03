@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the frontend and pack a Botkeep source ZIP to /tmp/ferrix-botkeep.zip.
 # Botkeep accepts text-only ZIPs (<=200 files, <=5 MB uncompressed), so binary
-# files are base64-encoded as <file>.b64; deploy/botkeep-start.sh decodes them.
+# files are base64-encoded as <file>.b64.NN parts (Botkeep caps each file at 500 KB); deploy/botkeep-start.sh decodes them.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.bun/bin:$PATH"
@@ -12,7 +12,7 @@ git archive HEAD | tar -x -C "$work"
 cp -r frontend/dist "$work/frontend/dist"
 cd "$work"
 find . -type f | while read -r f; do
-  if [ "$(file -b --mime-encoding "$f")" = "binary" ]; then base64 -w0 "$f" > "$f.b64"; rm "$f"; fi
+  if [ "$(file -b --mime-encoding "$f")" = "binary" ]; then base64 -w0 "$f" | split -b 400000 -d -a 2 - "$f.b64."; rm "$f"; fi
 done
 rm -f /tmp/ferrix-botkeep.zip
 zip -qr9 /tmp/ferrix-botkeep.zip .
