@@ -10,11 +10,14 @@ import { z } from "zod";
 import { fetchSafeImage, ImageRejected, MIME, type FetchedImage } from "./renderer/images";
 import { emojiDataUri } from "./renderer/emoji";
 import { FontRejected, scriptFont } from "./renderer/fonts/script";
+import { standaloneAfter, standaloneBefore } from "./standalone";
 
 const app = new Hono();
 app.use("*", logger());
 app.use("*", secureHeaders());
 app.use("/api/*", bodyLimit({ maxSize: 4 * 1024 * 1024, onError: (c) => c.json({ error: "Request too large" }, 413) }));
+
+standaloneBefore(app);
 
 app.get("/api/health", (c) => c.json({ ok: true }));
 
@@ -168,12 +171,14 @@ app.post("/api/preview/thread", async (c) => {
   }
 });
 
+standaloneAfter(app);
+
 app.onError((err, c) => {
   console.error(err);
   return c.json({ error: "Internal error" }, 500);
 });
 
-const port = Number(process.env.PORT ?? 8787);
+const port = Number(process.env.PORT ?? process.env.SERVER_PORT ?? 8787);
 const hostname = process.env.HOST ?? "127.0.0.1";
 console.log(`ferrix backend on ${hostname}:${port}`);
 export default { port, hostname, fetch: app.fetch };
