@@ -79,7 +79,7 @@ const TimeZone = z.string().refine(
 );
 
 export const RenderOptions = z.object({
-  theme: z.enum(["light", "dark"]).default("light"),
+  theme: z.enum(["light", "dark", "ferrix"]).default("light"),
   attribution: AttributionPreset.default("original"),
   scale: z.number().min(1).max(3).default(2),
   width: z.number().int().min(320).max(1200).default(600),
@@ -100,6 +100,8 @@ export type RenderOptions = z.infer<typeof RenderOptions>;
 export const RenderRequest = z.object({
   post: NormalizedPost,
   options: RenderOptions.default({}),
+  /** Optional corner label such as "3/10" (used for previewing one card of a thread). */
+  badge: z.string().max(12).optional(),
 });
 export type RenderRequest = z.infer<typeof RenderRequest>;
 

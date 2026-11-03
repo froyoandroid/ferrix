@@ -45,8 +45,8 @@ app.post("/api/render", async (c) => {
   const parsed = RenderRequest.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
   try {
-    const { post, options } = parsed.data;
-    return png(await renderPng(post, options), `${fileBase(post, options.maskUsername)}_${options.theme}.png`, post.sourceUrl);
+    const { post, options, badge } = parsed.data;
+    return png(await renderPng(post, options, badge), `${fileBase(post, options.maskUsername)}_${options.theme}.png`, post.sourceUrl);
   } catch (err) {
     return c.json({ error: (err as Error).message }, 422);
   }
