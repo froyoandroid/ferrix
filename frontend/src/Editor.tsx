@@ -465,6 +465,56 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
         </section>
 
         <aside className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 rounded-xl border border-ink/25 bg-surface p-4">
+            <div className="flex items-baseline justify-between">
+              <span className="text-[13px] font-medium">Share to X</span>
+              <span className="text-[11px] text-muted">{exportCount > 1 ? `${exportCount} images` : "1 image"}</span>
+            </div>
+            <textarea
+              className="h-24 w-full resize-none rounded-lg border border-line bg-paper p-2.5 text-[13px] leading-snug outline-none focus:border-ink/40"
+              value={caption}
+              maxLength={280}
+              onChange={(e) => setCaption(e.target.value)}
+              placeholder="Caption (optional)"
+            />
+            <div className="flex justify-between text-[11px] text-muted">
+              <button className="hover:text-ink" onClick={() => setCaption(`Source: ${posts[0].sourceUrl}`)}>Add source link</button>
+              <span className="tabular-nums">{caption.length}/280</span>
+            </div>
+            <button
+              onClick={shareToX}
+              disabled={sharing || (isThread && !select.length)}
+              className="flex items-center justify-center gap-2 rounded-lg bg-ink px-4 py-3 text-[15px] font-medium text-paper transition-colors hover:bg-rust disabled:bg-line disabled:text-muted"
+            >
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" aria-hidden>
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+              </svg>
+              {sharing ? "Preparing…" : "Share to X"}
+            </button>
+            {shareNote && <p className="rounded-lg bg-canvas px-3 py-2 text-xs leading-relaxed">{shareNote}</p>}
+            <button
+              onClick={download}
+              disabled={exporting || (isThread && !select.length)}
+              className="flex items-center justify-center rounded-lg border border-line px-4 py-2 text-[13px] font-medium transition-colors hover:border-ink/40 disabled:text-muted"
+            >
+              {exporting ? "Preparing…" : exportCount > 1 ? `Download ${exportCount} images (ZIP)` : "Download image"}
+            </button>
+            {parts.length > 1 && (
+              <div className="flex flex-col gap-1 rounded-lg border border-line bg-paper p-2">
+                <span className="px-1 text-[11px] text-muted">Or save them one by one</span>
+                {parts.map((p, i) => (
+                  <a key={p.url} href={p.url} download={p.name} className="flex items-center justify-between gap-2 rounded-md px-1.5 py-1 text-xs hover:bg-canvas">
+                    <span className="truncate">
+                      {i + 1}. {p.name}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-muted">{Math.max(1, Math.round(p.size / 1024))} KB ↓</span>
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <p className="px-1 pt-2 text-[11px] font-medium uppercase tracking-[0.18em] text-muted">Customize card</p>
           <Section title="Appearance">
             <div className="grid grid-cols-3 gap-2">
               {THEMES.map((t) => (
@@ -485,7 +535,7 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
             </Row>
           </Section>
 
-          <Section title="Attribution">
+          <Section title="Attribution" defaultOpen={false}>
             <Segmented
               full
               value={s.attribution}
@@ -514,7 +564,7 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
           </Section>
 
           {(mediaPost.content.media.length > 0 || (mediaPost.quote?.content.media.length ?? 0) > 0) && (
-            <Section title="Media">
+            <Section title="Media" defaultOpen={false}>
               <MediaPanel
                 media={mediaPost.content.media}
                 label={isThread ? `Media of post ${posOf(mediaIdx)} of ${posts.length}. Pick another card in the thread strip to edit its media.` : undefined}
@@ -565,58 +615,13 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
             </Section>
           )}
 
-          <Section title="Export">
+          <Section title="Download options" defaultOpen={false}>
             <Row label="Format">
               <Segmented value={s.format} onChange={(v) => set("format", v)} items={[{ id: "png", label: "PNG" }, { id: "webp", label: "WebP" }]} />
             </Row>
             <Row label="Resolution">
               <Segmented value={s.scale} onChange={(v) => set("scale", v)} items={[1, 2, 3].map((x) => ({ id: x, label: `${x}×` }))} />
             </Row>
-            <button
-              onClick={download}
-              disabled={exporting || (isThread && !select.length)}
-              className="mt-1 flex items-center justify-center rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-paper transition-colors hover:bg-rust disabled:bg-line disabled:text-muted"
-            >
-              {exporting ? "Preparing…" : exportCount > 1 ? `Download ${exportCount} images (ZIP)` : "Download image"}
-            </button>
-            {parts.length > 1 && (
-              <div className="flex flex-col gap-1 rounded-lg border border-line bg-paper p-2">
-                <span className="px-1 text-[11px] text-muted">Or save them one by one</span>
-                {parts.map((p, i) => (
-                  <a key={p.url} href={p.url} download={p.name} className="flex items-center justify-between gap-2 rounded-md px-1.5 py-1 text-xs hover:bg-canvas">
-                    <span className="truncate">
-                      {i + 1}. {p.name}
-                    </span>
-                    <span className="shrink-0 tabular-nums text-muted">{Math.max(1, Math.round(p.size / 1024))} KB ↓</span>
-                  </a>
-                ))}
-              </div>
-            )}
-          </Section>
-
-          <Section title="Share to X">
-            <textarea
-              className="h-20 w-full resize-none rounded-lg border border-line bg-paper p-2.5 text-[13px] leading-snug outline-none focus:border-ink/40"
-              value={caption}
-              maxLength={280}
-              onChange={(e) => setCaption(e.target.value)}
-              placeholder="Caption (optional)"
-            />
-            <div className="flex justify-between text-[11px] text-muted">
-              <button className="hover:text-ink" onClick={() => setCaption(`Source: ${posts[0].sourceUrl}`)}>Add source link</button>
-              <span className="tabular-nums">{caption.length}/280</span>
-            </div>
-            <button
-              onClick={shareToX}
-              disabled={sharing || (isThread && !select.length)}
-              className="flex items-center justify-center gap-2 rounded-lg border border-ink px-4 py-2.5 text-sm font-medium transition-colors hover:bg-ink hover:text-paper disabled:border-line disabled:text-muted"
-            >
-              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" aria-hidden>
-                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-              </svg>
-              {sharing ? "Preparing…" : "Share to X"}
-            </button>
-            {shareNote && <p className="rounded-lg bg-canvas px-3 py-2 text-xs leading-relaxed">{shareNote}</p>}
           </Section>
 
           <Section title="Post data" defaultOpen={false}>

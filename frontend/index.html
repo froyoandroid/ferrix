@@ -9,7 +9,10 @@
     <meta property="og:description" content="Paste a public X or Threads post URL and get a standalone image of it, single or as a thread. No account required." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://ferrix.overzealous.tech/" />
-    <meta name="theme-color" content="#f5f2ec" />
+    <meta name="theme-color" content="#f6f3ee" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#131210" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
+    <script src="/mode.js"></script>
   </head>
   <body>
     <!-- Static summary for crawlers and tools that do not run JavaScript; React replaces it on load. -->
@@ -20,7 +23,7 @@
         <p>Ferrix turns public social posts into standalone images you can download and share anywhere. The message outlives the messenger.</p>
         <h2>How it works</h2>
         <ol>
-          <li>Paste the URL of a public X post. Optionally include the author's own thread.</li>
+          <li>Paste the URL of a public X or Threads post. Optionally include the author's own thread.</li>
           <li>Adjust the card in the editor: theme (Paper, Carbon, Ferrix), card width, attribution (Original, Minimal, Clean), timestamp, engagement metrics, censored @username, platform mark.</li>
           <li>For threads: reorder cards, pick which posts to include, combine them into one image or export individual numbered cards.</li>
           <li>Download as PNG or WebP at 1×, 2× or 3×. Multi-image exports come as a ZIP with a sources.json crediting the original posts.</li>

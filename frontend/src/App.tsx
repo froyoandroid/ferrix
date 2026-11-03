@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Editor } from "./Editor";
 import { Switch } from "./ui";
 import { api, errorText, freshDraft, loadDraft, type Draft, type Post } from "./lib";
@@ -65,7 +65,7 @@ function Mark({ size = 22 }: { size?: number }) {
   // Monogram: an F cut from a solid plate.
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
-      <rect width="24" height="24" rx="5" fill="#1b1a18" />
+      <rect width="24" height="24" rx="5" fill="var(--color-logo)" />
       <path d="M7 6h10v3H10.5v2.5H16v3h-5.5V18H7z" fill="#a8502b" />
     </svg>
   );
@@ -90,6 +90,7 @@ function Header({ view, setView }: { view: View; setView: (v: View) => void }) {
         <nav className="flex items-center gap-6">
           {link("home", "Create")}
           {link("about", "About")}
+          <ModeSwitch />
         </nav>
       </div>
     </header>
@@ -245,3 +246,55 @@ function About({ onStart }: { onStart: () => void }) {
   );
 }
 
+
+type Mode = "system" | "light" | "dark";
+const MODE_KEY = "ferrix.mode";
+const NEXT: Record<Mode, Mode> = { system: "light", light: "dark", dark: "system" };
+const MODE_LABEL: Record<Mode, string> = { system: "Auto", light: "Light", dark: "Dark" };
+
+/** App appearance: follows the system unless set. Cycles Auto, Light, Dark. */
+function ModeSwitch() {
+  const [mode, setMode] = useState<Mode>(() => {
+    try {
+      return (localStorage.getItem(MODE_KEY) as Mode) || "system";
+    } catch {
+      return "system";
+    }
+  });
+  useEffect(() => {
+    const mq = matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => {
+      document.documentElement.dataset.mode = mode === "dark" || (mode === "system" && mq.matches) ? "dark" : "light";
+    };
+    apply();
+    try {
+      if (mode === "system") localStorage.removeItem(MODE_KEY);
+      else localStorage.setItem(MODE_KEY, mode);
+    } catch {
+      /* storage disabled */
+    }
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, [mode]);
+  const dark = mode === "dark" || (mode === "system" && typeof matchMedia !== "undefined" && matchMedia("(prefers-color-scheme: dark)").matches);
+  return (
+    <button
+      onClick={() => setMode(NEXT[mode])}
+      title={`Appearance: ${MODE_LABEL[mode]} (click to change)`}
+      aria-label={`Appearance: ${MODE_LABEL[mode]}`}
+      className="flex items-center gap-1.5 rounded-md border border-line px-2 py-1 text-[12px] text-muted transition-colors hover:text-ink"
+    >
+      <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+        {dark ? (
+          <path d="M13.5 10.2A6 6 0 0 1 5.8 2.5a6 6 0 1 0 7.7 7.7z" fill="currentColor" />
+        ) : (
+          <g fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <circle cx="8" cy="8" r="3" />
+            <path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M3.4 12.6l1-1M11.6 4.4l1-1" />
+          </g>
+        )}
+      </svg>
+      {MODE_LABEL[mode]}
+    </button>
+  );
+}

@@ -14,6 +14,26 @@
   --color-rust-dark: #8c4123;
 }
 
+:root {
+  --dot: rgb(27 26 24 / 0.09);
+  --color-logo: #1b1a18;
+  color-scheme: light;
+}
+/* App chrome in dark mode. The card themes (Paper, Carbon, Ferrix) are unaffected. */
+:root[data-mode="dark"] {
+  --color-paper: #131210;
+  --color-surface: #1b1a17;
+  --color-ink: #ebe6de;
+  --color-muted: #9b9389;
+  --color-line: #2e2b27;
+  --color-canvas: #0d0c0b;
+  --color-rust: #cf7246;
+  --color-rust-dark: #e0865a;
+  --dot: rgb(255 255 255 / 0.06);
+  --color-logo: #2a2723;
+  color-scheme: dark;
+}
+
 html,
 body {
   background: var(--color-paper);
@@ -23,7 +43,7 @@ body {
 
 .canvas-dots {
   background-color: var(--color-canvas);
-  background-image: radial-gradient(rgb(27 26 24 / 0.09) 1px, transparent 1px);
+  background-image: radial-gradient(var(--dot) 1px, transparent 1px);
   background-size: 16px 16px;
 }
 
