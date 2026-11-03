@@ -1,3 +1,4 @@
+import { visualText } from "../bidi";
 import type { RenderOptions } from "@ferrix/shared";
 import type { Theme } from "../themes";
 import { type ResolvedMedia, type ResolvedPost, type ResolvedQuote } from "../resolve";
@@ -243,7 +244,7 @@ export function MediaGrid({ media, width, theme, flush, options }: { media: Reso
 export function NameLine({ post, theme, options, fontSize = 16 }: { post: ResolvedPost | ResolvedQuote; theme: Theme; options: RenderOptions; fontSize?: number }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize, fontWeight: 700 }}>
-      {post.author.name ?? handle(post, options) ?? ""}
+      {post.author.name ? visualText(post.author.name) : (handle(post, options) ?? "")}
       {post.author.verified === true && <VerifiedBadge theme={theme} size={Math.round(fontSize * 1.1)} />}
     </div>
   );

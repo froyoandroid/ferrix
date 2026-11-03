@@ -9,6 +9,7 @@ import { extract, ExtractError } from "./adapters";
 import { z } from "zod";
 import { fetchSafeImage, ImageRejected, MIME, type FetchedImage } from "./renderer/images";
 import { emojiDataUri } from "./renderer/emoji";
+import { FontRejected, scriptFont } from "./renderer/fonts/script";
 
 const app = new Hono();
 app.use("*", logger());
@@ -110,6 +111,23 @@ app.get("/api/img", async (c) => {
       "Content-Disposition": "inline",
     },
   });
+});
+
+// Script font subsets (CJK, Thai, Indic, Arabic, ...) for the browser renderer.
+app.get("/api/font", async (c) => {
+  const family = c.req.query("f") ?? "";
+  const weight = Number(c.req.query("w"));
+  const text = c.req.query("t") ?? "";
+  try {
+    const data = await scriptFont(family, weight, text);
+    if (!data) return c.text("", 404);
+    return new Response(data, {
+      headers: { "Content-Type": "font/ttf", "Cache-Control": "public, max-age=2592000, immutable", "Cross-Origin-Resource-Policy": "same-origin" },
+    });
+  } catch (err) {
+    if (err instanceof FontRejected) return c.text("", 400);
+    return c.text("", 502);
+  }
 });
 
 // Twemoji for the browser renderer, as a data URI (bundled files only, no network).

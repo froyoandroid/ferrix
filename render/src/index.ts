@@ -3,3 +3,4 @@ export { fileBase } from "./naming";
 export { themes, type Theme } from "./themes";
 export { zipImages, type NamedFile } from "./zip";
 export type { LoadedImage, ImageLoader, ResolvedPost } from "./resolve";
+export { SCRIPT_FAMILIES, SUBSET_FAMILIES, scriptFonts, subsetText } from "./scripts";

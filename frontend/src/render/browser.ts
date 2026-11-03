@@ -78,7 +78,22 @@ function emoji(seg: string) {
   return p;
 }
 
-export const renderer = createRenderer({ fonts: loadFonts, fallbackFonts: loadFallbackFonts, loadImage, emoji });
+const scriptFonts = new Map<string, Promise<ArrayBuffer | null>>();
+/** A subset of a script font holding just `text`, from our own origin (the server fetches and caches it). */
+function scriptFont(family: string, weight: number, text: string) {
+  const key = `${family}|${weight}|${text}`;
+  let p = scriptFonts.get(key);
+  if (!p) {
+    p = fetch(`/api/font?f=${encodeURIComponent(family)}&w=${weight}${text ? `&t=${encodeURIComponent(text)}` : ""}`)
+      .then((r) => (r.ok ? r.arrayBuffer() : null))
+      .catch(() => null);
+    p.then((b) => b || scriptFonts.delete(key));
+    scriptFonts.set(key, p);
+  }
+  return p;
+}
+
+export const renderer = createRenderer({ fonts: loadFonts, fallbackFonts: loadFallbackFonts, loadImage, emoji, scriptFont });
 export { fileBase, svgSize, threadRoot, zipImages };
 
 // Canvas limits differ per browser; stay well inside Safari's (16384px side, ~16.7M px area on iOS).

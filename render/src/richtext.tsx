@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import type { Theme } from "./themes";
+import { visualTokens } from "./bidi";
 
 const URL_RE = /^https?:\/\/\S+/;
 const ENTITY_RE = /^[@#$][\p{L}\p{N}_]+/u;
@@ -14,9 +15,11 @@ export function RichText({ text, theme, fontSize }: { text: string; theme: Theme
   const lineHeight = Math.round(fontSize * 1.35);
   return (
     <div style={{ display: "flex", flexDirection: "column", fontSize, lineHeight: `${lineHeight}px` }}>
-      {lines.map((line, i) => (
-        <div key={i} style={{ display: "flex", flexWrap: "wrap", minHeight: lineHeight }}>
-          {(line.match(/\s*\S+\s*/g) ?? []).flatMap((tok, j) => {
+      {lines.map((line, i) => {
+        const { tokens, rtl } = visualTokens(line.match(/\s*\S+\s*/g) ?? []);
+        return (
+        <div key={i} style={{ display: "flex", flexWrap: "wrap", flexDirection: rtl ? "row-reverse" : "row", minHeight: lineHeight }}>
+          {tokens.flatMap((tok, j) => {
             const word = tok.trim();
             const long = word.length > 20;
             const base: CSSProperties = long
@@ -34,7 +37,8 @@ export function RichText({ text, theme, fontSize }: { text: string; theme: Theme
             ];
           })}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

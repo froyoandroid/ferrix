@@ -6,6 +6,7 @@ import { XCard } from "./templates/x";
 import { XThreadFrame, XThreadItem } from "./templates/x-thread";
 import { ThreadsCard } from "./templates/threads";
 import { fileBase } from "./naming";
+import { SUBSET_FAMILIES, scriptFonts, subsetText } from "./scripts";
 
 /**
  * Everything platform-specific the renderer needs. The server supplies disk fonts and a direct safe
@@ -17,6 +18,8 @@ export interface RenderEnv {
   emoji: (segment: string) => Promise<string | null>;
   /** Full-coverage fonts (sub/superscripts, arrows, Greek, Cyrillic), loaded only when a glyph is missing. */
   fallbackFonts?: () => Promise<Font[]>;
+  /** A subset of one script font (CJK, Thai, Indic, Arabic, ...) holding just `text`, or null. */
+  scriptFont?: (family: string, weight: number, text: string) => Promise<ArrayBuffer | null>;
 }
 
 export interface SvgImage {
@@ -51,13 +54,40 @@ export function threadRoot(posts: NormalizedPost[]): NormalizedPost {
 }
 
 export function createRenderer(env: RenderEnv) {
-  async function toSvg(el: JSX.Element, width: number) {
+  async function toSvg(el: JSX.Element, width: number): Promise<string> {
+    try {
+      return await layout(el, width, true);
+    } catch (err) {
+      // A script font the layout engine cannot parse must not fail the render: draw without it.
+      if (!/lookupType|substFormat|not yet supported|Unsupported OpenType/i.test(String((err as Error)?.message))) throw err;
+      return layout(el, width, false);
+    }
+  }
+
+  async function layout(el: JSX.Element, width: number, withScripts: boolean) {
     return satori(el, {
       width,
       fonts: await env.fonts(),
       loadAdditionalAsset: async (code, segment) => {
         if (code === "emoji") return (await env.emoji(segment)) ?? segment;
-        return env.fallbackFonts ? env.fallbackFonts().catch(() => []) : [];
+        const text = subsetText(segment);
+        const loaded: Font[] = [];
+        if (withScripts && env.scriptFont && text) {
+          // Subsets of at most 200 characters keep request URLs short; each gets its own name.
+          const chars = [...text];
+          const chunks = Array.from({ length: Math.ceil(chars.length / 200) }, (_, i) => chars.slice(i * 200, i * 200 + 200).join(""));
+          const jobs = scriptFonts(code, segment).flatMap(({ family, weights }) =>
+            weights.flatMap((weight) =>
+              (SUBSET_FAMILIES.has(family) ? chunks : [""]).map(async (chunk) => {
+                const data = await env.scriptFont!(family, weight, chunk).catch(() => null);
+                if (data) loaded.push({ name: chunk ? `${family} ${chunk.slice(0, 6)}` : family, data, weight: weight as Font["weight"], style: "normal" });
+              }),
+            ),
+          );
+          await Promise.all(jobs);
+        }
+        const fallback = env.fallbackFonts ? await env.fallbackFonts().catch(() => []) : [];
+        return [...loaded, ...fallback];
       },
     });
   }
