@@ -4,10 +4,11 @@ import { bodyLimit } from "hono/body-limit";
 import { secureHeaders } from "hono/secure-headers";
 import { RenderRequest, ThreadRenderRequest } from "@ferrix/shared";
 import { previewThread, renderPng, renderSvg, renderThread } from "./renderer";
-import { zipImages } from "./export/zip";
+import { fileBase, zipImages } from "@ferrix/render";
 import { extract, ExtractError } from "./adapters";
 import { z } from "zod";
-import { fileBase } from "./naming";
+import { fetchSafeImage, ImageRejected, MIME, type FetchedImage } from "./renderer/images";
+import { emojiDataUri } from "./renderer/emoji";
 
 const app = new Hono();
 app.use("*", logger());
@@ -59,7 +60,7 @@ app.post("/api/render/thread", async (c) => {
   try {
     const images = await renderThread(posts, opts);
     if (images.length === 1) return png(images[0].png, images[0].name, posts[0].sourceUrl);
-    return new Response(new Uint8Array(zipImages(images, posts.map((p) => p.sourceUrl))), {
+    return new Response(new Uint8Array(zipImages(images.map((i) => ({ name: i.name, data: i.png })), posts.map((p) => p.sourceUrl))), {
       headers: {
         "Content-Type": "application/zip",
         "Content-Disposition": `attachment; filename="${fileBase(posts[0], opts.options.maskUsername)}_thread.zip"`,
@@ -70,6 +71,54 @@ app.post("/api/render/thread", async (c) => {
   } catch (err) {
     return c.json({ error: (err as Error).message }, 422);
   }
+});
+
+// Image proxy for the browser renderer. All safety rules live in fetchSafeImage (allowlist, DNS/IP
+// checks, re-validated redirects, MIME + magic bytes, size and time caps). Small in-memory LRU.
+const imgCache = new Map<string, FetchedImage>();
+let imgCacheBytes = 0;
+const IMG_CACHE_MAX = 96 * 1024 * 1024;
+
+app.get("/api/img", async (c) => {
+  const url = c.req.query("u");
+  if (!url || url.length > 2048) return c.json({ error: "Missing image url" }, 400);
+  let img = imgCache.get(url);
+  if (img) {
+    imgCache.delete(url);
+    imgCache.set(url, img);
+  } else {
+    try {
+      img = await fetchSafeImage(url);
+    } catch (err) {
+      if (err instanceof ImageRejected) return c.json({ error: err.message }, 403);
+      return c.json({ error: "Image unavailable" }, 502);
+    }
+    imgCache.set(url, img);
+    imgCacheBytes += img.bytes.byteLength;
+    while (imgCacheBytes > IMG_CACHE_MAX) {
+      const [k, old] = imgCache.entries().next().value as [string, FetchedImage];
+      imgCache.delete(k);
+      imgCacheBytes -= old.bytes.byteLength;
+    }
+  }
+  return new Response(new Uint8Array(img.bytes), {
+    headers: {
+      "Content-Type": MIME[img.kind],
+      "Cache-Control": "public, max-age=86400, immutable",
+      "Content-Security-Policy": "default-src 'none'; sandbox",
+      "Cross-Origin-Resource-Policy": "same-origin",
+      "Content-Disposition": "inline",
+    },
+  });
+});
+
+// Twemoji for the browser renderer, as a data URI (bundled files only, no network).
+app.get("/api/emoji", async (c) => {
+  const seg = c.req.query("s") ?? "";
+  if (!seg || [...seg].length > 16) return c.text("", 400);
+  const uri = await emojiDataUri(seg);
+  if (!uri) return c.text("", 404);
+  return c.text(uri, 200, { "Cache-Control": "public, max-age=604800, immutable" });
 });
 
 // Live previews: layout only, returned as SVG for the browser to draw (rasterizing is ~95% of render cost).

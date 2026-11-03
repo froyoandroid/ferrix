@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { RenderOptions, type NormalizedPost, type ThreadMode } from "@ferrix/shared";
 import { Section, Row, Toggle, Segmented } from "./ui";
 import {
   api,
@@ -24,6 +25,45 @@ const THEMES: { id: ThemeId; name: string; swatch: [string, string] }[] = [
 
 const cache = new PreviewCache();
 
+// The layout engine (Satori + fonts) loads on first use, so Home stays light.
+const engineModule = () => import("./render/browser");
+
+type PreviewReq = { path: string; focus?: number; body: Record<string, unknown> };
+type ThreadExport = { posts: NormalizedPost[]; mode: ThreadMode; numbering: boolean; select: number[]; options: RenderOptions };
+
+async function previewLocal(req: PreviewReq): Promise<string[]> {
+  const { renderer } = await engineModule();
+  const b = req.body as { post: NormalizedPost; posts: NormalizedPost[]; options: object; badge?: string; numbering: boolean; select: number[] };
+  const options = RenderOptions.parse(b.options);
+  if (req.path === "/api/preview/thread")
+    return (await renderer.thread(b.posts, { mode: "combined", numbering: b.numbering, select: b.select, options })).map((i) => i.svg);
+  return [(await renderer.card(b.post, options, b.badge)).svg];
+}
+
+async function previewServer(req: PreviewReq, signal: AbortSignal): Promise<string[]> {
+  const res = await api(req.path, req.body, signal);
+  if (!res.ok) throw new Error(await errorText(res));
+  return req.path === "/api/preview/thread" ? ((await res.json()) as { segments: string[] }).segments : [await res.text()];
+}
+
+async function exportLocal(thread: ThreadExport | null, post: NormalizedPost, options: RenderOptions, format: "png" | "webp") {
+  const { renderer, rasterize, canRasterize, zipImages, fileBase } = await engineModule();
+  const svgs = thread ? await renderer.thread(thread.posts, thread) : [await renderer.card(post, options)];
+  if (!svgs.every((i) => canRasterize(i.svg, options.scale))) throw new Error("Image is too large for this browser's canvas");
+  const files = [];
+  for (const img of svgs) files.push({ name: img.name.replace(/\.png$/, `.${format}`), data: await rasterize(img.svg, options.scale, format) });
+  if (files.length === 1) return { blob: new Blob([new Uint8Array(files[0].data)], { type: `image/${format}` }), name: files[0].name };
+  const zip = zipImages(files, (thread?.posts ?? [post]).map((p) => p.sourceUrl));
+  return { blob: new Blob([new Uint8Array(zip)], { type: "application/zip" }), name: `${fileBase(thread!.posts[0], options.maskUsername)}_thread.zip` };
+}
+
+async function exportServer(thread: ThreadExport | null, post: NormalizedPost, options: RenderOptions) {
+  const res = thread ? await api("/api/render/thread", thread) : await api("/api/render", { post, options });
+  if (!res.ok) throw new Error(await errorText(res));
+  const zip = res.headers.get("Content-Type")?.includes("zip");
+  return { blob: await res.blob(), name: fileName(res, zip ? "ferrix_thread.zip" : "ferrix.png") };
+}
+
 /**
  * Pipeline: extraction happened once on Home (the post is now local data). Every edit here only
  * re-lays out the card on the server (~30 ms, returned as SVG that the browser draws). Rasterizing to
@@ -43,6 +83,7 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
   const [json, setJson] = useState(() => JSON.stringify(posts.length === 1 ? posts[0] : posts, null, 2));
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [drag, setDrag] = useState<number | null>(null);
+  const [engine, setEngine] = useState<"browser" | "server">("browser");
   const lastExport = useRef<{ key: string; url: string; name: string } | null>(null);
 
   // Persist the whole draft so a reload or a later visit picks up where the user left off.
@@ -74,7 +115,7 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
   );
 
   // What the preview shows. Resolution (scale) is not part of it: it only affects the export.
-  const previewReq = useMemo(() => {
+  const previewReq = useMemo((): PreviewReq | null => {
     if (!isThread) return { path: "/api/preview", body: { post: posts[0], options: renderOptions } };
     if (!select.length) return null;
     if (s.mode === "combined")
@@ -95,9 +136,8 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
     }
     const key = previewReq.path + JSON.stringify(previewReq.body);
     const caption = () => {
-      if (!isThread) return undefined;
-      if (s.mode === "individual") return `Card ${posOf(previewReq.focus!)} of ${posts.length}. Export holds ${select.length} images.`;
-      return undefined;
+      if (!isThread || s.mode !== "individual") return undefined;
+      return `Card ${posOf(previewReq.focus!)} of ${posts.length}. Export holds ${select.length} images.`;
     };
     const hit = cache.get(key);
     if (hit) {
@@ -105,26 +145,29 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
       setPreview({ images: hit, caption: caption() });
       return;
     }
+    let cancelled = false;
     const ctrl = new AbortController();
     const t = setTimeout(async () => {
       setBusy(true);
       setError(null);
       try {
-        const res = await api(previewReq.path, previewReq.body, ctrl.signal);
-        if (!res.ok) throw new Error(await errorText(res));
-        const images =
-          previewReq.path === "/api/preview/thread"
-            ? ((await res.json()) as { segments: string[] }).segments.map(svgUrl)
-            : [svgUrl(await res.text())];
+        const svgs = await previewLocal(previewReq).catch(async (e) => {
+          console.warn("Browser render failed, using server", e);
+          setEngine("server");
+          return previewServer(previewReq, ctrl.signal);
+        });
+        if (cancelled) return;
+        const images = svgs.map(svgUrl);
         cache.set(key, images);
         setPreview({ images, caption: caption() });
       } catch (e) {
-        if ((e as Error).name !== "AbortError") setError((e as Error).message);
+        if (!cancelled && (e as Error).name !== "AbortError") setError((e as Error).message);
       } finally {
-        if (!ctrl.signal.aborted) setBusy(false);
+        if (!cancelled) setBusy(false);
       }
-    }, 120);
+    }, 90);
     return () => {
+      cancelled = true;
       clearTimeout(t);
       ctrl.abort();
     };
@@ -133,20 +176,24 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
 
   async function download() {
     if (isThread && !select.length) return;
-    const options = { ...renderOptions, scale: s.scale };
-    const req = isThread
-      ? { path: "/api/render/thread", body: { posts: ordered, mode: s.mode, numbering: s.numbering, select, options } }
-      : { path: "/api/render", body: { post: posts[0], options } };
-    const key = req.path + JSON.stringify(req.body);
+    const options = RenderOptions.parse({ ...renderOptions, scale: s.scale });
+    const thread = isThread ? { posts: ordered, mode: s.mode, numbering: s.numbering, select, options } : null;
+    const key = JSON.stringify([thread ?? posts[0], options, s.format]);
     let out = lastExport.current?.key === key ? lastExport.current : null;
     if (!out) {
       setExporting(true);
       setError(null);
       try {
-        const res = await api(req.path, req.body);
-        if (!res.ok) throw new Error(await errorText(res));
-        const zip = res.headers.get("Content-Type")?.includes("zip");
-        out = { key, url: URL.createObjectURL(await res.blob()), name: fileName(res, zip ? "ferrix_thread.zip" : "ferrix.png") };
+        let blob: Blob;
+        let name: string;
+        try {
+          ({ blob, name } = await exportLocal(thread, posts[0], options, s.format));
+        } catch (e) {
+          if (s.format !== "png") throw e;
+          console.warn("Browser export failed, using server", e);
+          ({ blob, name } = await exportServer(thread, posts[0], options));
+        }
+        out = { key, url: URL.createObjectURL(blob), name };
         if (lastExport.current) URL.revokeObjectURL(lastExport.current.url);
         lastExport.current = out;
       } catch (e) {
@@ -209,7 +256,12 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
         <section className="flex min-w-0 flex-col gap-3">
           <div className="overflow-hidden rounded-xl border border-line">
             <div className="flex items-center justify-between border-b border-line bg-surface px-3 py-2 text-xs text-muted">
-              <span>Preview</span>
+              <span>
+                Preview
+                <span className="ml-2 text-muted/70" title={engine === "browser" ? "Rendered on this device" : "Rendered on the server"}>
+                  · {engine === "browser" ? "on device" : "server"}
+                </span>
+              </span>
               <div className="flex items-center gap-3">
                 {first && (
                   <span className="tabular-nums">
@@ -369,7 +421,7 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
 
           <Section title="Export">
             <Row label="Format">
-              <Segmented value="png" onChange={() => {}} items={[{ id: "png", label: "PNG" }, { id: "webp", label: "WebP", disabled: true }]} />
+              <Segmented value={s.format} onChange={(v) => set("format", v)} items={[{ id: "png", label: "PNG" }, { id: "webp", label: "WebP" }]} />
             </Row>
             <Row label="Resolution">
               <Segmented value={s.scale} onChange={(v) => set("scale", v)} items={[1, 2, 3].map((x) => ({ id: x, label: `${x}×` }))} />

@@ -3,10 +3,32 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Ferrix</title>
+    <title>Ferrix: turn public X posts into shareable images</title>
+    <meta name="description" content="Ferrix turns a public X post or thread into a clean, platform-style image you can download and share anywhere. No account required." />
+    <meta property="og:title" content="Ferrix: Information travels. Independently." />
+    <meta property="og:description" content="Paste a public X post URL and get a standalone image of it, single or as a thread. No account required." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://ferrix.overzealous.tech/" />
+    <meta name="theme-color" content="#f5f2ec" />
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Static summary for crawlers and tools that do not run JavaScript; React replaces it on load. -->
+    <div id="root">
+      <main style="max-width:680px;margin:64px auto;padding:0 20px;font-family:system-ui,sans-serif;color:#1b1a18">
+        <p style="letter-spacing:.2em;font-size:12px;color:#a8502b">FERRIX · SOCIAL POST RELAY</p>
+        <h1>Information travels. Independently.</h1>
+        <p>Ferrix turns public social posts into standalone images you can download and share anywhere. The message outlives the messenger.</p>
+        <h2>How it works</h2>
+        <ol>
+          <li>Paste the URL of a public X post. Optionally include the author's own thread.</li>
+          <li>Adjust the card in the editor: theme (Paper, Carbon, Ferrix), card width, attribution (Original, Minimal, Clean), timestamp, engagement metrics, censored @username, platform mark.</li>
+          <li>For threads: reorder cards, pick which posts to include, combine them into one image or export individual numbered cards.</li>
+          <li>Download as PNG or WebP at 1×, 2× or 3×. Multi-image exports come as a ZIP with a sources.json crediting the original posts.</li>
+        </ol>
+        <p>No account required. Images are rendered on your device. Threads support is coming soon.</p>
+        <noscript><p><strong>Ferrix needs JavaScript to run the editor.</strong></p></noscript>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

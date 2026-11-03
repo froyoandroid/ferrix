@@ -1,9 +1,16 @@
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { imageSize } from "image-size";
+import type { LoadedImage } from "@ferrix/render";
 
 /**
- * Safe remote image loader. Images are fetched server-side, so every rule here
- * exists to stop the renderer being used as an open proxy / SSRF vector:
- * https only, exact host allowlist, no redirects, timeout, size cap, magic-byte check.
+ * Safe remote image fetcher, shared by the server renderer and the /api/img proxy the browser
+ * renderer uses. Every rule exists to stop Ferrix being an open proxy or an SSRF vector:
+ * - https only, default port, no credentials, exact host allowlist
+ * - the host's addresses are resolved and any private, loopback, link-local or reserved IP is refused
+ * - redirects are followed manually (max 3) and every hop is checked again
+ * - declared Content-Type must be a raster image, and the bytes must match it (magic-byte sniff); no SVG
+ * - timeout and size cap enforced while streaming
  */
 
 const DEFAULT_HOSTS = ["pbs.twimg.com", "abs.twimg.com"];
@@ -13,39 +20,98 @@ const ALLOWED_HOSTS = new Set(
     .map((h) => h.trim().toLowerCase())
     .filter(Boolean),
 );
-const MAX_BYTES = 8 * 1024 * 1024;
+export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const TIMEOUT_MS = 8_000;
+const MAX_REDIRECTS = 3;
 const CACHE_MAX = 200;
 
-export interface LoadedImage {
-  src: string; // data URI
-  width: number;
-  height: number;
-}
+export type Kind = "png" | "jpeg" | "gif" | "webp";
+export const MIME: Record<Kind, string> = { png: "image/png", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp" };
+const DECLARED: Record<string, Kind> = { "image/png": "png", "image/jpeg": "jpeg", "image/jpg": "jpeg", "image/gif": "gif", "image/webp": "webp" };
 
-type Kind = "png" | "jpeg" | "gif" | "webp" | "svg";
-const MIME: Record<Kind, string> = {
-  png: "image/png",
-  jpeg: "image/jpeg",
-  gif: "image/gif",
-  webp: "image/webp",
-  svg: "image/svg+xml",
-};
+export class ImageRejected extends Error {}
 
-function sniff(b: Uint8Array): Kind | null {
+export function sniff(b: Uint8Array): Kind | null {
   if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return "png";
   if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "jpeg";
   if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return "gif";
-  if (
-    b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 &&
-    b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50
-  )
+  if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50)
     return "webp";
   return null;
 }
 
+/** True for any address a public image CDN should never resolve to. */
+export function isPrivateIp(ip: string): boolean {
+  if (isIP(ip) === 4) {
+    const [a, b] = ip.split(".").map(Number);
+    return (
+      a === 0 || a === 10 || a === 127 || a >= 224 ||
+      (a === 100 && b >= 64 && b <= 127) || // CGNAT, includes Tailscale
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 192 && b === 0) ||
+      (a === 198 && (b === 18 || b === 19))
+    );
+  }
+  const v6 = ip.toLowerCase();
+  if (v6.startsWith("::ffff:")) return isPrivateIp(v6.slice(7));
+  return v6 === "::" || v6 === "::1" || /^f[cd]/.test(v6) || /^fe[89ab]/.test(v6) || v6.startsWith("ff") || v6.startsWith("64:ff9b") || v6.startsWith("2001:db8");
+}
+
+async function checkUrl(raw: string | URL): Promise<URL> {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw new ImageRejected("invalid url");
+  }
+  if (u.protocol !== "https:" || u.username || u.password || u.port) throw new ImageRejected("only plain https urls");
+  const host = u.hostname.toLowerCase();
+  if (!ALLOWED_HOSTS.has(host)) throw new ImageRejected("host not allowed");
+  const addrs = await lookup(host, { all: true }).catch(() => []);
+  if (!addrs.length || addrs.some((a) => isPrivateIp(a.address))) throw new ImageRejected("host resolves to a non-public address");
+  return u;
+}
+
+export interface FetchedImage {
+  bytes: Uint8Array;
+  kind: Kind;
+}
+
+export async function fetchSafeImage(url: string): Promise<FetchedImage> {
+  let u = await checkUrl(url);
+  const signal = AbortSignal.timeout(TIMEOUT_MS);
+  for (let hop = 0; ; hop++) {
+    const res = await fetch(u, { redirect: "manual", signal, headers: { "User-Agent": "FerrixRenderer/0.1", Accept: "image/*" } });
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get("location");
+      if (!loc || hop >= MAX_REDIRECTS) throw new ImageRejected("too many redirects");
+      u = await checkUrl(new URL(loc, u));
+      continue;
+    }
+    if (!res.ok || !res.body) throw new Error(`upstream ${res.status}`);
+    const declared = DECLARED[(res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase()];
+    if (!declared) throw new ImageRejected("not a raster image");
+    if (Number(res.headers.get("content-length") ?? 0) > MAX_IMAGE_BYTES) throw new ImageRejected("too large");
+
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for await (const chunk of res.body) {
+      total += chunk.byteLength;
+      if (total > MAX_IMAGE_BYTES) throw new ImageRejected("too large");
+      chunks.push(chunk);
+    }
+    const bytes = new Uint8Array(Buffer.concat(chunks));
+    const kind = sniff(bytes);
+    if (!kind || kind !== declared) throw new ImageRejected("content does not match its type");
+    return { bytes, kind };
+  }
+}
+
 const cache = new Map<string, Promise<LoadedImage | null>>();
 
+/** Renderer image loader: data URIs (from user JSON) or allowlisted remote images, as data URIs. */
 export function loadImage(url: string | undefined): Promise<LoadedImage | null> {
   if (!url) return Promise.resolve(null);
   const hit = cache.get(url);
@@ -58,43 +124,23 @@ export function loadImage(url: string | undefined): Promise<LoadedImage | null> 
 
 async function doLoad(url: string): Promise<LoadedImage | null> {
   let bytes: Uint8Array;
-  let kind: Kind | null;
-
+  let mime: string;
   if (url.startsWith("data:")) {
     const m = /^data:image\/(png|jpeg|gif|webp|svg\+xml);base64,([A-Za-z0-9+/=]+)$/.exec(url);
-    if (!m || m[2].length > MAX_BYTES * 1.4) return null;
+    if (!m || m[2].length > MAX_IMAGE_BYTES * 1.4) return null;
     bytes = Uint8Array.from(Buffer.from(m[2], "base64"));
-    kind = m[1] === "svg+xml" ? "svg" : sniff(bytes);
-  } else {
-    const u = new URL(url);
-    if (u.protocol !== "https:" || u.username || u.password || u.port) return null;
-    if (!ALLOWED_HOSTS.has(u.hostname.toLowerCase())) return null;
-
-    const res = await fetch(u, {
-      redirect: "error",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      headers: { "User-Agent": "FerrixRenderer/0.1", Accept: "image/*" },
-    });
-    if (!res.ok || !res.body) return null;
-    if (Number(res.headers.get("content-length") ?? 0) > MAX_BYTES) return null;
-
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    for await (const chunk of res.body) {
-      total += chunk.byteLength;
-      if (total > MAX_BYTES) return null;
-      chunks.push(chunk);
+    if (m[1] === "svg+xml") mime = "image/svg+xml";
+    else {
+      const k = sniff(bytes);
+      if (!k) return null;
+      mime = MIME[k];
     }
-    bytes = Buffer.concat(chunks);
-    kind = sniff(bytes); // remote SVG is never accepted
+  } else {
+    const img = await fetchSafeImage(url);
+    bytes = img.bytes;
+    mime = MIME[img.kind];
   }
-
-  if (!kind) return null;
   const dim = imageSize(bytes);
   if (!dim.width || !dim.height) return null;
-  return {
-    src: `data:${MIME[kind]};base64,${Buffer.from(bytes).toString("base64")}`,
-    width: dim.width,
-    height: dim.height,
-  };
+  return { src: `data:${mime};base64,${Buffer.from(bytes).toString("base64")}`, width: dim.width, height: dim.height };
 }

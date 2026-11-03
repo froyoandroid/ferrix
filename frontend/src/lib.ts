@@ -19,6 +19,7 @@ export interface Settings {
   mode: ThreadMode;
   numbering: boolean;
   maxHeight: number;
+  format: "png" | "webp";
 }
 
 export const defaultSettings: Settings = {
@@ -33,6 +34,7 @@ export const defaultSettings: Settings = {
   mode: "combined",
   numbering: true,
   maxHeight: 3200,
+  format: "png",
 };
 
 /**
