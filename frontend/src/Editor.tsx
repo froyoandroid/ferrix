@@ -100,6 +100,8 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
   const [sharing, setSharing] = useState(false);
   const lastShare = useRef<{ key: string; files: ReturnType<typeof renderFiles> } | null>(null);
   const [shareNote, setShareNote] = useState<string | null>(null);
+  /** Desktop paste flow: which images exist, which one is on the clipboard, whether copying failed. */
+  const [paste, setPaste] = useState<{ count: number; copied: number | null; failed: boolean } | null>(null);
   const [caption, setCaption] = useState(() => (initial.settings.attribution === "clean" ? "" : `Source: ${initial.posts[0].sourceUrl}`));
   const lastExport = useRef<{ key: string; url: string; name: string } | null>(null);
   const [parts, setParts] = useState<{ name: string; url: string; size: number }[]>([]);
@@ -204,6 +206,7 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
       return [];
     });
   }, [renderOptions, s.scale, s.format, s.mode, s.numbering, select, ordered]);
+  useEffect(() => setPaste(null), [renderOptions, s.scale, s.mode, s.numbering, select, ordered]);
 
   async function download() {
     if (isThread && !select.length) return;
@@ -283,26 +286,30 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
       return;
     }
 
-    const blob = files.then((fs) => new Blob([new Uint8Array(fs[0].data)], { type: "image/png" }));
-    const copied =
+    copyImage(0);
+    files
+      .then((fs) => setPaste((p) => ({ count: Math.min(fs.length, X_MAX_IMAGES), copied: p?.copied ?? null, failed: p?.failed ?? false })))
+      .catch((e) => setError((e as Error).message))
+      .finally(() => setSharing(false));
+  }
+
+  /** Put image i of the current share on the clipboard. The ClipboardItem takes a promise, so the write starts inside the click. */
+  function copyImage(i: number) {
+    const files = lastShare.current?.files;
+    if (!files) return;
+    const blob = files.then((fs) => new Blob([new Uint8Array(fs[i].data)], { type: "image/png" }));
+    const write =
       typeof ClipboardItem !== "undefined" && navigator.clipboard?.write
         ? navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]).then(() => true, () => false)
         : Promise.resolve(false);
+    write.then((ok) => setPaste((p) => ({ count: p?.count ?? 1, copied: ok ? i : (p?.copied ?? null), failed: !ok })));
+  }
+
+  function openX() {
     // No "noopener" feature string: with it, window.open returns null and we could not tell a blocked pop-up.
     const win = window.open(intentUrl(caption), "_blank");
     if (win) win.opener = null;
-    Promise.all([files, copied])
-      .then(([fs, ok]) => {
-        const paste = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘V" : "Ctrl+V";
-        const more = fs.length > 1 ? ` X pastes one image at a time; download the ${fs.length} images for the rest.` : "";
-        setShareNote(
-          ok
-            ? `Image copied. Paste it into the X post with ${paste}.${more}${win ? "" : " Allow pop-ups to open X automatically."}`
-            : `Your browser blocked copying the image. Download it and attach it in X.${win ? "" : " Allow pop-ups to open X automatically."}`,
-        );
-      })
-      .catch((e) => setError((e as Error).message))
-      .finally(() => setSharing(false));
+    else setShareNote("Your browser blocked the pop-up. Allow pop-ups for Ferrix, then click Open X again.");
   }
 
   function applyJson() {
@@ -491,6 +498,7 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
               </svg>
               {sharing ? "Preparing…" : "Share to X"}
             </button>
+            {paste && <PasteSteps paste={paste} onCopy={copyImage} onOpen={openX} onDownload={download} />}
             {shareNote && <p className="rounded-lg bg-canvas px-3 py-2 text-xs leading-relaxed">{shareNote}</p>}
             <button
               onClick={download}
@@ -686,3 +694,79 @@ function SourceInfo({ posts, extractedAt }: { posts: NormalizedPost[]; extracted
   );
 }
 
+
+const isMac = () => /Mac|iPhone|iPad/.test(navigator.platform);
+const isTouch = () => typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches;
+const Key = ({ children }: { children: string }) => (
+  <kbd className="rounded border border-line bg-surface px-1.5 py-0.5 font-sans text-[11px] font-medium text-ink shadow-[0_1px_0_var(--color-line)]">{children}</kbd>
+);
+
+/** Step-by-step paste guide: X's composer link cannot carry images, so the image goes in by paste. */
+function PasteSteps({
+  paste,
+  onCopy,
+  onOpen,
+  onDownload,
+}: {
+  paste: { count: number; copied: number | null; failed: boolean };
+  onCopy: (i: number) => void;
+  onOpen: () => void;
+  onDownload: () => void;
+}) {
+  const touch = isTouch();
+  const step = "flex gap-2.5 text-[13px] leading-snug";
+  const num = "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-line text-[11px] tabular-nums text-muted";
+  return (
+    <ol className="flex flex-col gap-2.5 rounded-lg border border-line bg-paper p-3">
+      <li className={step}>
+        <span className={num}>1</span>
+        {paste.failed ? (
+          <span>
+            Your browser would not copy the image.{" "}
+            <button className="underline underline-offset-2 hover:text-rust" onClick={onDownload}>
+              Download it
+            </button>{" "}
+            and attach it with the image button in X.
+          </span>
+        ) : (
+          <span>{paste.copied !== null ? (paste.count > 1 ? `Image ${paste.copied + 1} of ${paste.count} copied.` : "Image copied.") : "Copying image…"}</span>
+        )}
+      </li>
+      <li className={step}>
+        <span className={num}>2</span>
+        <span className="flex flex-1 items-center justify-between gap-2">
+          Open the X post box.
+          <button onClick={onOpen} className="rounded-md bg-ink px-2.5 py-1 text-[12px] font-medium text-paper hover:bg-rust">
+            Open X
+          </button>
+        </span>
+      </li>
+      <li className={step}>
+        <span className={num}>3</span>
+        {touch ? (
+          <span>Press and hold in the post box, then tap Paste.</span>
+        ) : (
+          <span className="flex flex-wrap items-center gap-1">
+            Click the post box and press <Key>{isMac() ? "⌘" : "Ctrl"}</Key>+<Key>V</Key> to paste the image.
+          </span>
+        )}
+      </li>
+      {paste.count > 1 && !paste.failed && (
+        <li className="flex flex-col gap-1.5 border-t border-line pt-2.5 text-[12px] text-muted">
+          X pastes one image at a time. Copy the next one, then paste again:
+          <span className="flex flex-wrap gap-1.5">
+            {Array.from({ length: paste.count }, (_, i) => (
+              <button
+                key={i}
+                onClick={() => onCopy(i)}
+                className={`rounded-md border px-2 py-1 text-[12px] ${paste.copied === i ? "border-ink/40 text-ink" : "border-line hover:border-ink/40"}`}
+              >
+                {paste.copied === i ? `Image ${i + 1} copied` : `Copy image ${i + 1}`}
+              </button>
+            ))}
+          </span>
+        </li>
+      )}
+    </ol>
+  );
+}
