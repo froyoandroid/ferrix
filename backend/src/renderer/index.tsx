@@ -47,6 +47,11 @@ async function cardSvg(resolved: ResolvedPost, options: RenderOptions, badge?: s
   return toSvg(<XCard post={resolved} options={options} theme={themes[options.theme]} badge={badge} />, options.width);
 }
 
+/** Layout only (no rasterizing): the browser draws this for live previews. */
+export async function renderSvg(post: NormalizedPost, options: RenderOptions, badge?: string): Promise<string> {
+  return cardSvg(await resolveFor(post, options), options, badge);
+}
+
 export async function renderPng(post: NormalizedPost, options: RenderOptions, badge?: string): Promise<Uint8Array> {
   return toPng(await cardSvg(await resolveFor(post, options), options, badge), options.scale);
 }
@@ -55,13 +60,9 @@ export async function renderThread(
   posts: NormalizedPost[],
   opts: { mode: ThreadMode; numbering: boolean; select?: number[]; options: RenderOptions },
 ): Promise<RenderedImage[]> {
-  posts.forEach(assertSupported);
   const { options } = opts;
   const total = posts.length;
-  const picked = posts
-    .map((post, i) => ({ post, pos: i + 1 }))
-    .filter(({ pos }) => !opts.select || opts.select.includes(pos));
-  if (!picked.length) throw new Error("Selection matched no posts");
+  const picked = pick(posts, opts.select);
   const num = (pos: number) => (opts.numbering ? `${pos}/${total}` : undefined);
   const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -74,6 +75,15 @@ export async function renderThread(
     );
   }
 
+  const segments = await combinedSegments(posts, picked, num, options);
+  return segments.map((seg) => ({ name: seg.name, png: toPng(seg.svg, options.scale) }));
+}
+
+type Picked = { post: NormalizedPost; pos: number }[];
+
+/** Combined thread as SVG segments, each under options.maxHeight. Shared by preview and PNG export. */
+async function combinedSegments(posts: NormalizedPost[], picked: Picked, num: (pos: number) => string | undefined, options: RenderOptions) {
+  const pad = (n: number) => String(n).padStart(2, "0");
   // Combined: render each item alone to measure, then pack into segments under maxHeight.
   const theme = themes[options.theme];
   const resolved: ResolvedPost[] = await Promise.all(
@@ -108,7 +118,21 @@ export async function renderThread(
         options.width,
       );
       const base = `${fileBase(posts[0], options.maskUsername)}_thread`;
-      return { name: segments.length > 1 ? `${base}_${pad(s + 1)}.png` : `${base}.png`, png: toPng(svg, options.scale) };
+      return { name: segments.length > 1 ? `${base}_${pad(s + 1)}.png` : `${base}.png`, svg };
     }),
   );
+}
+
+function pick(posts: NormalizedPost[], select?: number[]) {
+  posts.forEach(assertSupported);
+  const picked = posts.map((post, i) => ({ post, pos: i + 1 })).filter(({ pos }) => !select || select.includes(pos));
+  if (!picked.length) throw new Error("Selection matched no posts");
+  return picked;
+}
+
+/** Live preview of a combined thread: SVG segments, no rasterizing. */
+export async function previewThread(posts: NormalizedPost[], opts: { numbering: boolean; select?: number[]; options: RenderOptions }) {
+  const picked = pick(posts, opts.select);
+  const num = (pos: number) => (opts.numbering ? `${pos}/${posts.length}` : undefined);
+  return (await combinedSegments(posts, picked, num, opts.options)).map((s) => s.svg);
 }

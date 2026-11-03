@@ -3,7 +3,7 @@ import { logger } from "hono/logger";
 import { bodyLimit } from "hono/body-limit";
 import { secureHeaders } from "hono/secure-headers";
 import { RenderRequest, ThreadRenderRequest } from "@ferrix/shared";
-import { renderPng, renderThread } from "./renderer";
+import { previewThread, renderPng, renderSvg, renderThread } from "./renderer";
 import { zipImages } from "./export/zip";
 import { extract, ExtractError } from "./adapters";
 import { z } from "zod";
@@ -67,6 +67,35 @@ app.post("/api/render/thread", async (c) => {
         "Cache-Control": "no-store",
       },
     });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 422);
+  }
+});
+
+// Live previews: layout only, returned as SVG for the browser to draw (rasterizing is ~95% of render cost).
+const svgHeaders = {
+  "Content-Type": "image/svg+xml; charset=utf-8",
+  "Content-Security-Policy": "default-src 'none'; img-src data:; style-src 'unsafe-inline'",
+  "Cache-Control": "no-store",
+};
+
+app.post("/api/preview", async (c) => {
+  const parsed = RenderRequest.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+  try {
+    const { post, options, badge } = parsed.data;
+    return new Response(await renderSvg(post, options, badge), { headers: svgHeaders });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 422);
+  }
+});
+
+app.post("/api/preview/thread", async (c) => {
+  const parsed = ThreadRenderRequest.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+  const { posts, ...opts } = parsed.data;
+  try {
+    return c.json({ segments: await previewThread(posts, opts) }, 200, { "Cache-Control": "no-store" });
   } catch (err) {
     return c.json({ error: (err as Error).message }, 422);
   }
