@@ -307,7 +307,7 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
 
   function openX() {
     // No "noopener" feature string: with it, window.open returns null and we could not tell a blocked pop-up.
-    const win = window.open(intentUrl(caption), "_blank");
+    const win = window.open(intentUrl([caption.trim(), pasteHint()].filter(Boolean).join("\n\n")), "_blank");
     if (win) win.opener = null;
     else setShareNote("Your browser blocked the pop-up. Allow pop-ups for Ferrix, then click Open X again.");
   }
@@ -695,6 +695,17 @@ function SourceInfo({ posts, extractedAt }: { posts: NormalizedPost[]; extracted
 }
 
 
+/**
+ * A one-line reminder placed in the X post box itself, where the user is looking when the image is
+ * missing. It tells them how to paste and to delete the line before posting.
+ */
+function pasteHint() {
+  const id = /^(id|ms)\b/i.test(navigator.language || "");
+  const keys = isMac() ? "⌘V" : "Ctrl+V";
+  if (isTouch()) return id ? "👉 Tekan lama di sini lalu Tempel untuk menambah gambar, lalu hapus baris ini." : "👉 Press and hold here, tap Paste to add the image, then delete this line.";
+  return id ? `👉 Tekan ${keys} untuk menempel gambar, lalu hapus baris ini.` : `👉 Press ${keys} to paste the image, then delete this line.`;
+}
+
 const isMac = () => /Mac|iPhone|iPad/.test(navigator.platform);
 const isTouch = () => typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches;
 const Key = ({ children }: { children: string }) => (
@@ -744,10 +755,10 @@ function PasteSteps({
       <li className={step}>
         <span className={num}>3</span>
         {touch ? (
-          <span>Press and hold in the post box, then tap Paste.</span>
+          <span>Press and hold in the post box, then tap Paste. Delete the reminder line before posting.</span>
         ) : (
           <span className="flex flex-wrap items-center gap-1">
-            Click the post box and press <Key>{isMac() ? "⌘" : "Ctrl"}</Key>+<Key>V</Key> to paste the image.
+            Click the post box and press <Key>{isMac() ? "⌘" : "Ctrl"}</Key>+<Key>V</Key> to paste the image. Delete the reminder line before posting.
           </span>
         )}
       </li>
