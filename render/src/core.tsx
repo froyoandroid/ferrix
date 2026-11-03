@@ -4,6 +4,7 @@ import { themes } from "./themes";
 import { resolvePost, type ImageLoader, type ResolvedPost } from "./resolve";
 import { XCard } from "./templates/x";
 import { XThreadFrame, XThreadItem } from "./templates/x-thread";
+import { ThreadsCard } from "./templates/threads";
 import { fileBase } from "./naming";
 
 /**
@@ -36,7 +37,7 @@ export function svgSize(svg: string) {
 }
 
 function assertSupported(post: NormalizedPost) {
-  if (post.platform !== "x") throw new Error(`Platform "${post.platform}" is not supported yet`);
+  if (post.platform !== "x" && post.platform !== "threads") throw new Error(`Platform "${post.platform}" is not supported yet`);
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -58,7 +59,8 @@ export function createRenderer(env: RenderEnv) {
 
   async function card(post: NormalizedPost, options: RenderOptions, badge?: string): Promise<SvgImage> {
     const resolved = await resolve(post, options);
-    const svg = await toSvg(<XCard post={resolved} options={options} theme={themes[options.theme]} badge={badge} />, options.width);
+    const Card = post.platform === "threads" ? ThreadsCard : XCard;
+    const svg = await toSvg(<Card post={resolved} options={options} theme={themes[options.theme]} badge={badge} />, options.width);
     return { name: `${fileBase(post, options.maskUsername)}_${options.theme}.png`, svg };
   }
 

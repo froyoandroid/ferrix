@@ -47,10 +47,13 @@ export interface Draft {
   selected: boolean[];
   settings: Settings;
   savedAt: string;
+  /** When the posts were fetched from the platform; absent for posts typed in as JSON. */
+  extractedAt?: string;
 }
 
-export function freshDraft(posts: Post[], settings: Settings = defaultSettings): Draft {
-  return { posts, order: posts.map((_, i) => i), selected: posts.map(() => true), settings, savedAt: new Date().toISOString() };
+export function freshDraft(posts: Post[], settings: Settings = defaultSettings, extracted = false): Draft {
+  const now = new Date().toISOString();
+  return { posts, order: posts.map((_, i) => i), selected: posts.map(() => true), settings, savedAt: now, ...(extracted ? { extractedAt: now } : {}) };
 }
 
 const KEY = "ferrix.draft.v1";
@@ -64,7 +67,7 @@ export function loadDraft(): Draft | null {
     const n = posts.length;
     const order = Array.isArray(d.order) && d.order.length === n && new Set(d.order).size === n && d.order.every((i) => i >= 0 && i < n) ? d.order : posts.map((_, i) => i);
     const selected = Array.isArray(d.selected) && d.selected.length === n ? d.selected.map(Boolean) : posts.map(() => true);
-    return { posts, order, selected, settings: { ...defaultSettings, ...d.settings }, savedAt: d.savedAt };
+    return { posts, order, selected, settings: { ...defaultSettings, ...d.settings }, savedAt: d.savedAt, extractedAt: typeof d.extractedAt === "string" ? d.extractedAt : undefined };
   } catch {
     return null;
   }

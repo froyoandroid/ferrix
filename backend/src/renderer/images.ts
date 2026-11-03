@@ -13,7 +13,9 @@ import type { LoadedImage } from "@ferrix/render";
  * - timeout and size cap enforced while streaming
  */
 
-const DEFAULT_HOSTS = ["pbs.twimg.com", "abs.twimg.com"];
+// Exact hosts, or "*.suffix" for a CDN's numbered edge hosts (Threads images come from
+// scontent-<pop>.cdninstagram.com and scontent-<pop>.xx.fbcdn.net).
+const DEFAULT_HOSTS = ["pbs.twimg.com", "abs.twimg.com", "*.cdninstagram.com", "*.fbcdn.net"];
 const ALLOWED_HOSTS = new Set(
   (process.env.FERRIX_IMAGE_HOSTS ?? DEFAULT_HOSTS.join(","))
     .split(",")
@@ -30,6 +32,16 @@ export const MIME: Record<Kind, string> = { png: "image/png", jpeg: "image/jpeg"
 const DECLARED: Record<string, Kind> = { "image/png": "png", "image/jpeg": "jpeg", "image/jpg": "jpeg", "image/gif": "gif", "image/webp": "webp" };
 
 export class ImageRejected extends Error {}
+
+export function hostAllowed(host: string): boolean {
+  if (ALLOWED_HOSTS.has(host)) return true;
+  for (const h of ALLOWED_HOSTS) {
+    if (!h.startsWith("*.")) continue;
+    const suffix = h.slice(1); // ".cdninstagram.com"
+    if (host.endsWith(suffix) && /^[a-z0-9-]+(\.[a-z0-9-]+)*$/.test(host.slice(0, -suffix.length))) return true;
+  }
+  return false;
+}
 
 export function sniff(b: Uint8Array): Kind | null {
   if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return "png";
@@ -68,7 +80,7 @@ async function checkUrl(raw: string | URL): Promise<URL> {
   }
   if (u.protocol !== "https:" || u.username || u.password || u.port) throw new ImageRejected("only plain https urls");
   const host = u.hostname.toLowerCase();
-  if (!ALLOWED_HOSTS.has(host)) throw new ImageRejected("host not allowed");
+  if (!hostAllowed(host)) throw new ImageRejected("host not allowed");
   const addrs = await lookup(host, { all: true }).catch(() => []);
   if (!addrs.length || addrs.some((a) => isPrivateIp(a.address))) throw new ImageRejected("host resolves to a non-public address");
   return u;

@@ -318,7 +318,7 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
           <button onClick={onNew} className="text-muted hover:text-ink">← New</button>
           <span className="h-3.5 w-px bg-line" />
           <span className="font-medium">{isThread ? `Thread · ${posts.length} posts` : "Single post"}</span>
-          <span className="text-muted">X · {s.maskUsername ? "hidden" : who}</span>
+          <span className="text-muted">{PLATFORM_NAME[head.platform]} · {s.maskUsername ? "hidden" : who}</span>
         </div>
         <button
           onClick={download}
@@ -341,8 +341,8 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
               </span>
               <div className="flex items-center gap-3">
                 {first && (
-                  <span className="tabular-nums">
-                    {Math.round(first.w * s.scale)} × {Math.round(first.h * s.scale)}px
+                  <span className="tabular-nums" title="Card width in CSS pixels, and the pixel size of the exported file">
+                    {Math.round(first.w)} CSS px · {Math.round(first.w * s.scale)} × {Math.round(first.h * s.scale)} export px ({s.scale}×)
                     {preview!.images.length > 1 && ` · ${preview!.images.length} images`}
                   </span>
                 )}
@@ -370,6 +370,8 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
             {preview?.caption && <div className="border-t border-line bg-surface px-3 py-2 text-xs text-muted">{preview.caption}</div>}
           </div>
           {error && <p className="rounded-lg border border-rust/30 bg-rust/5 px-3 py-2 text-sm text-rust">{error}</p>}
+
+          <SourceInfo posts={ordered} extractedAt={draft.extractedAt} />
 
           {isThread && (
             <div className="rounded-xl border border-line bg-surface">
@@ -480,7 +482,15 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
             <Toggle label="Engagement metrics" checked={s.showMetrics} onChange={(v) => set("showMetrics", v)} />
             <Toggle label="Censor @username" hint="da****wa" checked={s.maskUsername} onChange={(v) => set("maskUsername", v)} disabled={s.attribution === "clean"} />
             <Row label="Platform mark">
-              <Segmented value={s.logo} onChange={(v) => set("logo", v)} items={[{ id: "x", label: "X" }, { id: "twitter", label: "Bird" }, { id: "none", label: "None" }]} />
+              <Segmented
+                value={head.platform === "threads" && s.logo === "twitter" ? "x" : s.logo}
+                onChange={(v) => set("logo", v)}
+                items={
+                  head.platform === "threads"
+                    ? [{ id: "x", label: "Threads" }, { id: "none", label: "None" }]
+                    : [{ id: "x", label: "X" }, { id: "twitter", label: "Bird" }, { id: "none", label: "None" }]
+                }
+              />
             </Row>
           </Section>
 
@@ -558,3 +568,47 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
     </main>
   );
 }
+
+const PLATFORM_NAME = { x: "X", threads: "Threads", facebook: "Facebook" } as const;
+
+/** Provenance kept outside the canvas, even when the image hides the author: for verification. */
+function SourceInfo({ posts, extractedAt }: { posts: NormalizedPost[]; extractedAt?: string }) {
+  const head = posts[0];
+  const a = head.author;
+  const author = [a.name, a.username && `@${a.username}`].filter(Boolean).join(" ");
+  const fmt = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  return (
+    <details className="group rounded-xl border border-line bg-surface text-xs">
+      <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-muted">
+        <span>
+          Source · {PLATFORM_NAME[head.platform]}
+          {author && ` · ${author}`}
+        </span>
+        <span className="transition-transform group-open:rotate-180">⌄</span>
+      </summary>
+      <dl className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-3 gap-y-1.5 border-t border-line px-3 py-2.5">
+        <dt className="text-muted">Platform</dt>
+        <dd>{PLATFORM_NAME[head.platform]}</dd>
+        <dt className="text-muted">Original author</dt>
+        <dd>{author || "Unknown"}</dd>
+        {head.timestamp && (
+          <>
+            <dt className="text-muted">Posted</dt>
+            <dd>{fmt(head.timestamp)}</dd>
+          </>
+        )}
+        <dt className="text-muted">Extracted</dt>
+        <dd>{extractedAt ? fmt(extractedAt) : "Imported from JSON (not verified against the platform)"}</dd>
+        <dt className="text-muted">{posts.length > 1 ? "Source URLs" : "Source URL"}</dt>
+        <dd className="flex min-w-0 flex-col gap-0.5">
+          {posts.map((p) => (
+            <a key={p.sourceUrl} href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="truncate text-rust hover:underline">
+              {p.sourceUrl.replace(/^https:\/\//, "")}
+            </a>
+          ))}
+        </dd>
+      </dl>
+    </details>
+  );
+}
+

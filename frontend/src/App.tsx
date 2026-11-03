@@ -41,7 +41,7 @@ export default function App() {
       <Header view={view} setView={(v) => (v === "home" ? goHome() : setView(v))} />
       {view === "home" && (
         <Home
-          onLoaded={(p) => open(freshDraft(p, saved?.settings))}
+          onLoaded={(p) => open(freshDraft(p, saved?.settings, true))}
           onJson={() => open(freshDraft(sample, saved?.settings))}
           draft={saved}
           onContinue={() => saved && open(saved)}
@@ -57,7 +57,7 @@ type Detected = { platform: "x" | "threads"; supported: boolean } | null;
 function detect(url: string): Detected {
   const u = url.trim();
   if (/^(https?:\/\/)?(www\.|mobile\.)?(x|twitter)\.com\/[^/]+\/status\/\d+/i.test(u)) return { platform: "x", supported: true };
-  if (/^(https?:\/\/)?(www\.)?threads\.(net|com)\//i.test(u)) return { platform: "threads", supported: false };
+  if (/^(https?:\/\/)?(www\.)?threads\.(net|com)\/@[^/]+\/post\/[A-Za-z0-9_-]+/i.test(u)) return { platform: "threads", supported: true };
   return null;
 }
 
@@ -101,16 +101,17 @@ function Home({ onLoaded, onJson, draft, onContinue }: { onLoaded: (p: Post[]) =
   const [thread, setThread] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [advanced, setAdvanced] = useState(false);
   const d = detect(url);
+  const threadsLink = d?.platform === "threads";
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!d) return setError("Paste a link to a single post, like x.com/user/status/123.");
-    if (!d.supported) return setError("Threads support is coming soon. X links work today.");
+    if (!d) return setError("Paste a link to a single post, like x.com/user/status/123 or threads.com/@user/post/abc.");
     setError(null);
     setBusy(true);
     try {
-      const res = await api("/api/extract", { url: url.trim(), thread });
+      const res = await api("/api/extract", { url: url.trim(), thread: thread && d.platform === "x" });
       if (!res.ok) return setError(await errorText(res));
       const data = (await res.json()) as { posts: Post[] };
       onLoaded(data.posts);
@@ -148,7 +149,7 @@ function Home({ onLoaded, onJson, draft, onContinue }: { onLoaded: (p: Post[]) =
         <div className="flex items-center rounded-xl border border-line bg-surface p-1.5 shadow-[0_1px_0_rgba(0,0,0,0.03)] focus-within:border-ink/40">
           <input
             className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-[15px] outline-none placeholder:text-muted/70"
-            placeholder="Paste an X post URL…"
+            placeholder="Paste an X or Threads post URL…"
             value={url}
             onChange={(e) => {
               setUrl(e.target.value);
@@ -167,13 +168,20 @@ function Home({ onLoaded, onJson, draft, onContinue }: { onLoaded: (p: Post[]) =
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 px-1">
           <div className="flex items-center gap-2">
             {chip("X", d?.platform === "x")}
-            {chip("Threads", d?.platform === "threads", true)}
+            {chip("Threads", d?.platform === "threads")}
           </div>
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">
-            <Switch checked={thread} onChange={setThread} />
+          <label className={`flex items-center gap-2 text-xs text-muted ${threadsLink ? "opacity-50" : "cursor-pointer"}`}>
+            <Switch checked={thread && !threadsLink} onChange={setThread} disabled={threadsLink} />
             Include the author's thread
           </label>
         </div>
+        <p className="mt-1.5 px-1 text-right text-[11px] leading-relaxed text-muted/80">
+          {threadsLink
+            ? "Threads links import a single post for now."
+            : thread
+              ? "Ferrix follows the author's own replies up from this post (up to 25) and imports them in order."
+              : "Turn on to import the whole self-thread this post belongs to."}
+        </p>
         {error && <p className="mt-3 px-1 text-sm text-rust">{error}</p>}
       </form>
 
@@ -193,12 +201,22 @@ function Home({ onLoaded, onJson, draft, onContinue }: { onLoaded: (p: Post[]) =
         </button>
       )}
 
-      <div className="mt-16 flex items-center gap-4 text-xs text-muted">
-        <span>No account required</span>
-        <span className="h-3 w-px bg-line" />
-        <button onClick={onJson} className="underline-offset-4 hover:text-ink hover:underline">
-          Start from JSON
-        </button>
+      <div className="mt-16 flex flex-col items-center gap-3 text-xs text-muted">
+        <div className="flex items-center gap-4">
+          <span>No account required</span>
+          <span className="h-3 w-px bg-line" />
+          <button onClick={() => setAdvanced((v) => !v)} className="underline-offset-4 hover:text-ink hover:underline" aria-expanded={advanced}>
+            Advanced
+          </button>
+        </div>
+        {advanced && (
+          <div className="flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2">
+            <span>Developer options:</span>
+            <button onClick={onJson} className="text-ink underline-offset-4 hover:underline">
+              Start from post JSON
+            </button>
+          </div>
+        )}
       </div>
     </main>
   );

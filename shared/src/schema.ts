@@ -42,6 +42,7 @@ const PostBase = z.object({
       likes: z.number().int().nonnegative().optional(),
       bookmarks: z.number().int().nonnegative().optional(),
       views: z.number().int().nonnegative().optional(),
+      shares: z.number().int().nonnegative().optional(),
     })
     .optional(),
   timestamp: z.string().datetime({ offset: true }).optional(),
