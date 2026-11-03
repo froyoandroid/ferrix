@@ -699,8 +699,8 @@ function SourceInfo({ posts, extractedAt }: { posts: NormalizedPost[]; extracted
 function pasteHint() {
   const id = /^(id|ms)\b/i.test(navigator.language || "");
   const keys = isMac() ? "⌘V" : "Ctrl+V";
-  if (isTouch()) return id ? "👉 Tekan lama di sini lalu Tempel untuk menambah gambar, lalu hapus baris ini." : "👉 Press and hold here, tap Paste to add the image, then delete this line.";
-  return id ? `👉 Tekan ${keys} untuk menempel gambar, lalu hapus baris ini.` : `👉 Press ${keys} to paste the image, then delete this line.`;
+  if (isTouch()) return id ? "Tekan lama di sini lalu Tempel untuk menambah gambar, lalu hapus baris ini." : "Press and hold here, tap Paste to add the image, then delete this line.";
+  return id ? `Tekan ${keys} untuk menempel gambar, lalu hapus baris ini.` : `Press ${keys} to paste the image, then delete this line.`;
 }
 
 const isMac = () => /Mac|iPhone|iPad/.test(navigator.platform);
