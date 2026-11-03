@@ -18,7 +18,7 @@ const sample: Post[] = [
 
 function draftLabel(d: Draft) {
   const a = d.posts[0].author;
-  const who = d.settings.maskUsername ? "hidden" : a.username ? `@${a.username}` : a.name ?? "post";
+  const who = a.username ? `@${a.username}` : a.name ?? "post";
   return d.posts.length > 1 ? `${who} thread (${d.posts.length})` : who;
 }
 

@@ -286,7 +286,8 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
       return;
     }
 
-    copyImage(0);
+    // Phones cannot paste an image into the X app, so they save it and attach it from the gallery instead.
+    if (!isTouch()) copyImage(0);
     files
       .then((fs) => setPaste((p) => ({ count: Math.min(fs.length, X_MAX_IMAGES), copied: p?.copied ?? null, failed: p?.failed ?? false })))
       .catch((e) => setError((e as Error).message))
@@ -303,6 +304,22 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
         ? navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]).then(() => true, () => false)
         : Promise.resolve(false);
     write.then((ok) => setPaste((p) => ({ count: p?.count ?? 1, copied: ok ? i : (p?.copied ?? null), failed: !ok })));
+  }
+
+  /** Save image i of the current share as a file (phones: it lands in Downloads or Photos). */
+  function saveImage(i: number) {
+    lastShare.current?.files.then((fs) => {
+      const f = fs[i];
+      const url = URL.createObjectURL(new Blob([new Uint8Array(f.data)], { type: "image/png" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = f.name;
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setPaste((p) => (p ? { ...p, copied: i } : p));
+    });
   }
 
   function openX() {
@@ -344,7 +361,7 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
           <button onClick={onNew} className="text-muted hover:text-ink">← New</button>
           <span className="h-3.5 w-px bg-line" />
           <span className="font-medium">{isThread ? `Thread · ${posts.length} posts` : "Single post"}</span>
-          <span className="text-muted">{PLATFORM_NAME[head.platform]} · {s.maskUsername ? "hidden" : who}</span>
+          <span className="text-muted">{PLATFORM_NAME[head.platform]} · {who}</span>
         </div>
         <button
           onClick={download}
@@ -495,7 +512,7 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
               </svg>
               {sharing ? "Preparing…" : "Share to X"}
             </button>
-            {paste && <PasteSteps paste={paste} onCopy={copyImage} onOpen={openX} onDownload={download} />}
+            {paste && (isTouch() ? <SaveSteps paste={paste} onSave={saveImage} onOpen={openX} /> : <PasteSteps paste={paste} onCopy={copyImage} onOpen={openX} onDownload={download} />)}
             {shareNote && <p className="rounded-lg bg-canvas px-3 py-2 text-xs leading-relaxed">{shareNote}</p>}
             <button
               onClick={download}
@@ -699,7 +716,7 @@ function SourceInfo({ posts, extractedAt }: { posts: NormalizedPost[]; extracted
 function pasteHint() {
   const id = /^(id|ms)\b/i.test(navigator.language || "");
   const keys = isMac() ? "⌘V" : "Ctrl+V";
-  if (isTouch()) return id ? "Tekan lama di sini lalu Tempel untuk menambah gambar, lalu hapus baris ini." : "Press and hold here, tap Paste to add the image, then delete this line.";
+  if (isTouch()) return id ? "Ketuk ikon foto di bawah dan pilih gambar yang tadi disimpan, lalu hapus baris ini." : "Tap the photo icon below and pick the image you saved, then delete this line.";
   return id ? `Tekan ${keys} untuk menempel gambar, lalu hapus baris ini.` : `Press ${keys} to paste the image, then delete this line.`;
 }
 
@@ -775,6 +792,44 @@ function PasteSteps({
           </span>
         </li>
       )}
+    </ol>
+  );
+}
+
+/** Phone guide when the share sheet is not available: save the image, open X, attach it from the gallery. */
+function SaveSteps({ paste, onSave, onOpen }: { paste: { count: number; copied: number | null }; onSave: (i: number) => void; onOpen: () => void }) {
+  const step = "flex gap-2.5 text-[13px] leading-snug";
+  const num = "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-line text-[11px] tabular-nums text-muted";
+  const btn = "rounded-md bg-ink px-2.5 py-1 text-[12px] font-medium text-paper hover:bg-rust";
+  return (
+    <ol className="flex flex-col gap-2.5 rounded-lg border border-line bg-paper p-3">
+      <li className={step}>
+        <span className={num}>1</span>
+        <span className="flex flex-1 flex-col gap-1.5">
+          Save the image to your phone.
+          <span className="flex flex-wrap gap-1.5">
+            {Array.from({ length: paste.count }, (_, i) => (
+              <button key={i} onClick={() => onSave(i)} className={btn}>
+                {paste.count > 1 ? `Save image ${i + 1}` : "Save image"}
+                {paste.copied === i ? " ✓" : ""}
+              </button>
+            ))}
+          </span>
+        </span>
+      </li>
+      <li className={step}>
+        <span className={num}>2</span>
+        <span className="flex flex-1 items-center justify-between gap-2">
+          Open the X post box.
+          <button onClick={onOpen} className={btn}>
+            Open X
+          </button>
+        </span>
+      </li>
+      <li className={step}>
+        <span className={num}>3</span>
+        <span>Tap the photo icon in X and pick the saved image. Delete the reminder line before posting.</span>
+      </li>
     </ol>
   );
 }
