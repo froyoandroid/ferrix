@@ -31,7 +31,7 @@ export const defaultSettings: Settings = {
   showDate: true,
   showMetrics: false,
   logo: "x",
-  maskUsername: false,
+  maskUsername: true,
   width: 600,
   scale: 2,
   mode: "combined",

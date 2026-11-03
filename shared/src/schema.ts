@@ -101,7 +101,7 @@ export const RenderOptions = z.object({
   /** Platform mark in the header: current X logo, the classic Twitter bird, or none. */
   logo: z.enum(["x", "twitter", "none"]).default("x"),
   /** Replace the middle of every @username with ****. */
-  maskUsername: z.boolean().default(false),
+  maskUsername: z.boolean().default(true),
   /** Media frame: "auto" keeps a single image's own ratio (clamped); otherwise every layout uses this ratio. */
   mediaAspect: z.enum(["auto", "16:9", "3:2", "1:1", "4:5"]).default("auto"),
   /** Alt text: hidden, an ALT badge on the tile (like X), or written under the media. */
