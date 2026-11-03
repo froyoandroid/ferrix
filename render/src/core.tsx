@@ -15,6 +15,8 @@ export interface RenderEnv {
   fonts: () => Promise<Font[]>;
   loadImage: ImageLoader;
   emoji: (segment: string) => Promise<string | null>;
+  /** Full-coverage fonts (sub/superscripts, arrows, Greek, Cyrillic), loaded only when a glyph is missing. */
+  fallbackFonts?: () => Promise<Font[]>;
 }
 
 export interface SvgImage {
@@ -43,12 +45,20 @@ function assertSupported(post: NormalizedPost) {
 const pad = (n: number) => String(n).padStart(2, "0");
 
 /** Layout engine: post data -> SVG (text as paths, images inlined). Rasterizing is the caller's job. */
+/** The thread's opening post (earliest), so file names do not change when cards are reordered. */
+export function threadRoot(posts: NormalizedPost[]): NormalizedPost {
+  return posts.reduce((a, b) => (b.timestamp && a.timestamp && b.timestamp < a.timestamp ? b : a), posts[0]);
+}
+
 export function createRenderer(env: RenderEnv) {
   async function toSvg(el: JSX.Element, width: number) {
     return satori(el, {
       width,
       fonts: await env.fonts(),
-      loadAdditionalAsset: async (code, segment) => (code === "emoji" ? ((await env.emoji(segment)) ?? segment) : []),
+      loadAdditionalAsset: async (code, segment) => {
+        if (code === "emoji") return (await env.emoji(segment)) ?? segment;
+        return env.fallbackFonts ? env.fallbackFonts().catch(() => []) : [];
+      },
     });
   }
 
@@ -99,7 +109,8 @@ export function createRenderer(env: RenderEnv) {
     let cur: number[] = [];
     let h = 16; // frame padding
     heights.forEach((ih, i) => {
-      if (cur.length && h + ih > options.maxHeight) {
+      const full = options.postsPerImage > 0 && cur.length >= options.postsPerImage;
+      if (cur.length && (full || h + ih > options.maxHeight)) {
         segments.push(cur);
         cur = [];
         h = 16;
@@ -110,7 +121,7 @@ export function createRenderer(env: RenderEnv) {
     if (cur.length) segments.push(cur);
 
     const last = resolved.length - 1;
-    const base = `${fileBase(posts[0], options.maskUsername)}_thread`;
+    const base = `${fileBase(threadRoot(posts), options.maskUsername)}_thread`;
     return Promise.all(
       segments.map(async (seg, s) => ({
         name: segments.length > 1 ? `${base}_${pad(s + 1)}.png` : `${base}.png`,

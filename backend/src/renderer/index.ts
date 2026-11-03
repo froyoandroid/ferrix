@@ -1,7 +1,7 @@
 import { Resvg } from "@resvg/resvg-js";
 import type { NormalizedPost, RenderOptions } from "@ferrix/shared";
 import { createRenderer, type ThreadOpts } from "@ferrix/render";
-import { loadFonts } from "./fonts";
+import { loadFallbackFonts, loadFonts } from "./fonts";
 import { emojiDataUri } from "./emoji";
 import { loadImage } from "./images";
 
@@ -11,7 +11,7 @@ export interface RenderedImage {
 }
 
 /** Server-side renderer: same layout engine as the browser, rasterized with resvg. */
-export const renderer = createRenderer({ fonts: loadFonts, loadImage, emoji: emojiDataUri });
+export const renderer = createRenderer({ fonts: loadFonts, fallbackFonts: loadFallbackFonts, loadImage, emoji: emojiDataUri });
 
 const toPng = (svg: string, scale: number) => new Resvg(svg, { fitTo: { mode: "zoom", value: scale } }).render().asPng();
 

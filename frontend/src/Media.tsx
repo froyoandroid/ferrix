@@ -1,5 +1,17 @@
-import type { MediaItem, RenderOptions } from "@ferrix/shared";
+import { LIMITS, type MediaItem, type RenderOptions } from "@ferrix/shared";
 import { Row, Segmented } from "./ui";
+
+/** Read a local image, scaled down to 1600 px on the long side, as a data URL. */
+async function localImage(file: File): Promise<string> {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * k);
+  c.height = Math.round(bmp.height * k);
+  c.getContext("2d")!.drawImage(bmp, 0, 0, c.width, c.height);
+  bmp.close();
+  return c.toDataURL(file.type === "image/png" ? "image/png" : "image/jpeg", 0.86);
+}
 
 const src = (m: MediaItem) => {
   const u = m.type === "image" ? (m.url ?? m.thumbnailUrl) : m.thumbnailUrl;
@@ -18,7 +30,9 @@ export function MediaPanel({
   onAspect,
   onAltMode,
   onChange,
+  compact,
 }: {
+  compact?: boolean;
   media: MediaItem[];
   label?: string;
   aspect: RenderOptions["mediaAspect"];
@@ -28,9 +42,17 @@ export function MediaPanel({
   onChange: (media: MediaItem[]) => void;
 }) {
   const update = (i: number, patch: Partial<MediaItem>) => onChange(media.map((m, j) => (j === i ? { ...m, ...patch } : m)));
+  const shown = media.filter((m) => !m.hidden).length;
+  const replace = async (i: number, file?: File) => {
+    if (!file || !file.type.startsWith("image/")) return;
+    const url = await localImage(file);
+    const m = media[i];
+    update(i, m.type === "image" ? { url, width: undefined, height: undefined } : { thumbnailUrl: url });
+  };
 
   return (
     <>
+      {!compact && (<>
       <Row label="Frame">
         <Segmented
           small
@@ -48,6 +70,7 @@ export function MediaPanel({
       <Row label="Alt text">
         <Segmented small value={altMode} onChange={onAltMode} items={[{ id: "off", label: "Off" }, { id: "badge", label: "Badge" }, { id: "caption", label: "Caption" }]} />
       </Row>
+      </>)}
       {label && <p className="text-[11px] text-muted">{label}</p>}
       <ul className="flex flex-col gap-3">
         {media.map((m, i) => {
@@ -78,6 +101,10 @@ export function MediaPanel({
                     {i + 1}. {KIND[m.type]}
                   </span>
                   <span className="flex items-center gap-2">
+                    <label className="cursor-pointer hover:text-ink" title={m.type === "image" ? "Use a local image instead" : "Use a still image as the poster"}>
+                      {s ? "Replace" : "Add still"}
+                      <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => replace(i, e.target.files?.[0])} />
+                    </label>
                     {(m.focusX !== undefined || m.focusY !== undefined) && (
                       <button className="hover:text-ink" onClick={() => update(i, { focusX: undefined, focusY: undefined })}>
                         Centre
@@ -106,6 +133,11 @@ export function MediaPanel({
           );
         })}
       </ul>
+      {shown > LIMITS.mediaShown && (
+        <p className="text-[11px] leading-relaxed text-rust">
+          {shown} items are shown; only the first {LIMITS.mediaShown} fit in the image. Untick the ones to leave out.
+        </p>
+      )}
       <p className="text-[11px] leading-relaxed text-muted">Click a thumbnail to choose what stays in frame when the image is cropped.</p>
     </>
   );

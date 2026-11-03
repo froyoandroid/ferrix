@@ -1,4 +1,4 @@
-export { createRenderer, svgSize, type RenderEnv, type Renderer, type SvgImage, type ThreadOpts } from "./core";
+export { createRenderer, svgSize, threadRoot, type RenderEnv, type Renderer, type SvgImage, type ThreadOpts } from "./core";
 export { fileBase } from "./naming";
 export { themes, type Theme } from "./themes";
 export { zipImages, type NamedFile } from "./zip";

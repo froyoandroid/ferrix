@@ -145,10 +145,10 @@ function Badge({ children, left }: { children: string; left: number }) {
 function MediaTile({ m, w, h, theme, opts }: { m: ResolvedMedia; w: number; h: number; theme: Theme; opts: MediaOpts }) {
   const alt = opts.altText === "badge" && Boolean(m.altText?.trim());
   return (
-    <div style={{ display: "flex", position: "relative", width: w, height: h, backgroundColor: theme.media, overflow: "hidden" }}>
+    <div style={{ display: "flex", position: "relative", width: w, height: h, backgroundColor: !m.img && m.type === "video" ? "#151515" : theme.media, overflow: "hidden" }}>
       {m.img ? (
         <CoverImage m={m} w={w} h={h} />
-      ) : (
+      ) : m.type === "video" ? null : (
         <div style={{ display: "flex", width: w, height: h, alignItems: "center", justifyContent: "center", color: theme.muted, fontSize: 14 }}>
           Media unavailable
         </div>

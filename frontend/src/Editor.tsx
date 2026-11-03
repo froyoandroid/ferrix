@@ -58,12 +58,12 @@ async function renderFiles(thread: ThreadExport | null, post: NormalizedPost, op
 }
 
 async function exportLocal(thread: ThreadExport | null, post: NormalizedPost, options: RenderOptions, format: "png" | "webp") {
-  const { zipImages, fileBase } = await engineModule();
+  const { zipImages, fileBase, threadRoot } = await engineModule();
   const files = await renderFiles(thread, post, options, format);
   const parts = files.map((f) => ({ name: f.name, blob: new Blob([new Uint8Array(f.data)], { type: `image/${format}` }) }));
   if (parts.length === 1) return { ...parts[0], parts };
   const zip = zipImages(files, (thread?.posts ?? [post]).map((p) => p.sourceUrl));
-  return { blob: new Blob([new Uint8Array(zip)], { type: "application/zip" }), name: `${fileBase(thread!.posts[0], options.maskUsername)}_thread.zip`, parts };
+  return { blob: new Blob([new Uint8Array(zip)], { type: "application/zip" }), name: `${fileBase(threadRoot(thread!.posts), options.maskUsername)}_thread.zip`, parts };
 }
 
 /** X takes at most 4 images per post. */
@@ -132,8 +132,9 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
       maxHeight: s.maxHeight,
       mediaAspect: s.mediaAspect,
       altText: s.altText,
+      postsPerImage: s.postsPerImage,
     }),
-    [s.theme, s.attribution, timeZone, s.showDate, s.showMetrics, s.logo, s.maskUsername, s.width, s.maxHeight, s.mediaAspect, s.altText],
+    [s.theme, s.attribution, timeZone, s.showDate, s.showMetrics, s.logo, s.maskUsername, s.width, s.maxHeight, s.mediaAspect, s.altText, s.postsPerImage],
   );
 
   // What the preview shows. Resolution (scale) is not part of it: it only affects the export.
@@ -512,7 +513,7 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
             </Row>
           </Section>
 
-          {mediaPost.content.media.length > 0 && (
+          {(mediaPost.content.media.length > 0 || (mediaPost.quote?.content.media.length ?? 0) > 0) && (
             <Section title="Media">
               <MediaPanel
                 media={mediaPost.content.media}
@@ -525,6 +526,25 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
                   setDraft((d) => ({ ...d, posts: d.posts.map((p, i) => (i === mediaIdx ? { ...p, content: { ...p.content, media } } : p)) }))
                 }
               />
+              {mediaPost.quote && mediaPost.quote.content.media.length > 0 && (
+                <>
+                  <p className="pt-1 text-[11px] font-medium text-ink">Quoted post</p>
+                  <MediaPanel
+                    compact
+                    media={mediaPost.quote.content.media}
+                    aspect={s.mediaAspect}
+                    altMode={s.altText}
+                    onAspect={(v) => set("mediaAspect", v)}
+                    onAltMode={(v) => set("altText", v)}
+                    onChange={(media) =>
+                      setDraft((d) => ({
+                        ...d,
+                        posts: d.posts.map((p, i) => (i === mediaIdx && p.quote ? { ...p, quote: { ...p.quote, content: { ...p.quote.content, media } } } : p)),
+                      }))
+                    }
+                  />
+                </>
+              )}
             </Section>
           )}
 
@@ -535,6 +555,11 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
               {s.mode === "combined" && (
                 <Row label="Split long images at">
                   <Segmented value={s.maxHeight} onChange={(v) => set("maxHeight", v)} items={[{ id: 2000, label: "2k" }, { id: 3200, label: "3.2k" }, { id: 8000, label: "Never" }]} />
+                </Row>
+              )}
+              {s.mode === "combined" && (
+                <Row label="Posts per image">
+                  <Segmented value={s.postsPerImage} onChange={(v) => set("postsPerImage", v)} items={[{ id: 0, label: "Auto" }, { id: 3, label: "3" }, { id: 5, label: "5" }, { id: 8, label: "8" }]} />
                 </Row>
               )}
             </Section>
@@ -570,9 +595,6 @@ export function Editor({ initial, onNew }: { initial: Draft; onNew: () => void }
           </Section>
 
           <Section title="Share to X">
-            <p className="text-xs leading-relaxed text-muted">
-              No X login needed. On phones the share sheet opens with the image; on desktop the image is copied and X opens with your caption.
-            </p>
             <textarea
               className="h-20 w-full resize-none rounded-lg border border-line bg-paper p-2.5 text-[13px] leading-snug outline-none focus:border-ink/40"
               value={caption}

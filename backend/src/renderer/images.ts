@@ -33,12 +33,17 @@ const DECLARED: Record<string, Kind> = { "image/png": "png", "image/jpeg": "jpeg
 
 export class ImageRejected extends Error {}
 
+const META_SUFFIXES = new Set([".cdninstagram.com", ".fbcdn.net"]);
+
 export function hostAllowed(host: string): boolean {
   if (ALLOWED_HOSTS.has(host)) return true;
   for (const h of ALLOWED_HOSTS) {
     if (!h.startsWith("*.")) continue;
     const suffix = h.slice(1); // ".cdninstagram.com"
-    if (host.endsWith(suffix) && /^[a-z0-9-]+(\.[a-z0-9-]+)*$/.test(host.slice(0, -suffix.length))) return true;
+    if (!host.endsWith(suffix) || !/^[a-z0-9-]+(\.[a-z0-9-]+)*$/.test(host.slice(0, -suffix.length))) continue;
+    // Meta CDNs: only the scontent-* media edges, not every subdomain.
+    if (META_SUFFIXES.has(suffix) && !/^scontent(-[a-z0-9]+)*$/.test(host.split(".")[0])) continue;
+    return true;
   }
   return false;
 }

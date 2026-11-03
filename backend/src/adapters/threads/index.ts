@@ -1,4 +1,5 @@
 import { parse, type HTMLElement } from "node-html-parser";
+import { LIMITS } from "@ferrix/shared";
 import type { MediaItem, NormalizedPost } from "@ferrix/shared";
 import { ExtractError } from "../errors";
 
@@ -96,11 +97,12 @@ function mediaFrom(root: HTMLElement): MediaItem[] {
   const seen = new Set<string>();
   for (const c of containers) {
     for (const v of c.querySelectorAll("video")) {
-      const poster = v.getAttribute("poster");
-      if (poster && !seen.has(poster)) {
-        seen.add(poster);
-        out.push({ type: "video", thumbnailUrl: poster });
-      }
+      // The embed often ships no poster; keep the video as a placeholder the editor can give a still.
+      const poster = v.getAttribute("poster") ?? undefined;
+      const key = poster ?? v.querySelector("source")?.getAttribute("src") ?? v.toString().slice(0, 200);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(poster && /^https:\/\//.test(poster) ? { type: "video", thumbnailUrl: poster } : { type: "video" });
     }
     for (const img of c.querySelectorAll("img")) {
       const src = img.getAttribute("src");
@@ -110,7 +112,7 @@ function mediaFrom(root: HTMLElement): MediaItem[] {
       out.push({ type: "image", url: src, ...(alt ? { altText: alt.slice(0, 2000) } : {}) });
     }
   }
-  return out.slice(0, 4);
+  return out.slice(0, LIMITS.mediaPerPost);
 }
 
 export function parseEmbed(html: string, user: string, code: string): NormalizedPost {

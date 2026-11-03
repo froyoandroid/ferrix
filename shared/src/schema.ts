@@ -2,7 +2,9 @@ import { z } from "zod";
 
 export const LIMITS = {
   textChars: 25_000,
-  mediaPerPost: 4,
+  /** Stored per post (Threads carousels hold up to 20); at most mediaShown render. */
+  mediaPerPost: 20,
+  mediaShown: 4,
   postsPerThread: 50,
 } as const;
 
@@ -104,6 +106,8 @@ export const RenderOptions = z.object({
   mediaAspect: z.enum(["auto", "16:9", "3:2", "1:1", "4:5"]).default("auto"),
   /** Alt text: hidden, an ALT badge on the tile (like X), or written under the media. */
   altText: z.enum(["off", "badge", "caption"]).default("badge"),
+  /** Combined threads: start a new image after this many posts (0 = only split by height). */
+  postsPerImage: z.number().int().min(0).max(25).default(0),
 });
 export type RenderOptions = z.infer<typeof RenderOptions>;
 

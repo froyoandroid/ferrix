@@ -1,3 +1,4 @@
+import { LIMITS } from "@ferrix/shared";
 import type { MediaItem, NormalizedPost, QuotedPost } from "@ferrix/shared";
 
 export interface LoadedImage {
@@ -22,7 +23,7 @@ export interface ResolvedPost extends Omit<NormalizedPost, "quote"> {
 
 /** Fetch avatar and media (video -> thumbnail) up front; failures become null placeholders. */
 async function resolveBase<T extends QuotedPost>(post: T, withAvatar: boolean, load: ImageLoader) {
-  const media = post.content.media.filter((m) => !m.hidden);
+  const media = post.content.media.filter((m) => !m.hidden).slice(0, LIMITS.mediaShown);
   const [avatar, imgs] = await Promise.all([
     withAvatar ? load(post.author.avatarUrl) : Promise.resolve(null),
     Promise.all(media.map((m) => load(m.type === "image" ? (m.url ?? m.thumbnailUrl) : m.thumbnailUrl))),

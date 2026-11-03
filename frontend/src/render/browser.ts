@@ -1,7 +1,9 @@
-import { createRenderer, fileBase, svgSize, zipImages, type LoadedImage } from "@ferrix/render";
+import { createRenderer, fileBase, svgSize, zipImages, type LoadedImage, threadRoot } from "@ferrix/render";
 import type { Font } from "satori";
 import inter400 from "@fontsource/inter/files/inter-latin-400-normal.woff?url";
 import inter700 from "@fontsource/inter/files/inter-latin-700-normal.woff?url";
+import interFull400 from "@ferrix/render/fonts/inter-full-400.ttf?url";
+import interFull700 from "@ferrix/render/fonts/inter-full-700.ttf?url";
 
 /**
  * Browser renderer: the same layout engine the server uses, running locally. The server is only
@@ -18,6 +20,17 @@ function loadFonts() {
   return fonts;
 }
 
+let fallback: Promise<Font[]> | null = null;
+/** Full Inter, fetched only when a post has glyphs outside the latin subset. */
+function loadFallbackFonts() {
+  fallback ??= Promise.all([interFull400, interFull700].map((u) => fetch(u).then((r) => r.arrayBuffer()))).then(([regular, bold]) => [
+    { name: "Inter Full", data: regular, weight: 400, style: "normal" },
+    { name: "Inter Full", data: bold, weight: 700, style: "normal" },
+  ]);
+  fallback.catch(() => (fallback = null));
+  return fallback;
+}
+
 const blobToDataUri = (b: Blob) =>
   new Promise<string>((resolve, reject) => {
     const r = new FileReader();
@@ -26,6 +39,15 @@ const blobToDataUri = (b: Blob) =>
     r.readAsDataURL(b);
   });
 
+function dataUrlBlob(url: string): Blob {
+  const m = /^data:(image\/(?:png|jpeg|gif|webp));base64,(.*)$/.exec(url);
+  if (!m) throw new Error("unsupported data URL");
+  const bin = atob(m[2]);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: m[1] });
+}
+
 const images = new Map<string, Promise<LoadedImage | null>>();
 function loadImage(url: string | undefined): Promise<LoadedImage | null> {
   if (!url) return Promise.resolve(null);
@@ -33,7 +55,7 @@ function loadImage(url: string | undefined): Promise<LoadedImage | null> {
   if (!p) {
     p = (async () => {
       const blob = url.startsWith("data:image/")
-        ? await (await fetch(url)).blob()
+        ? dataUrlBlob(url) // decoded locally: the CSP keeps fetch() to our own origin
         : await fetch(`/api/img?u=${encodeURIComponent(url)}`).then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))));
       const bmp = await createImageBitmap(blob);
       const out = { src: url.startsWith("data:") ? url : await blobToDataUri(blob), width: bmp.width, height: bmp.height };
@@ -56,8 +78,8 @@ function emoji(seg: string) {
   return p;
 }
 
-export const renderer = createRenderer({ fonts: loadFonts, loadImage, emoji });
-export { fileBase, svgSize, zipImages };
+export const renderer = createRenderer({ fonts: loadFonts, fallbackFonts: loadFallbackFonts, loadImage, emoji });
+export { fileBase, svgSize, threadRoot, zipImages };
 
 // Canvas limits differ per browser; stay well inside Safari's (16384px side, ~16.7M px area on iOS).
 const MAX_SIDE = 16384;

@@ -22,6 +22,7 @@ export interface Settings {
   format: "png" | "webp";
   mediaAspect: "auto" | "16:9" | "3:2" | "1:1" | "4:5";
   altText: "off" | "badge" | "caption";
+  postsPerImage: number;
 }
 
 export const defaultSettings: Settings = {
@@ -39,6 +40,7 @@ export const defaultSettings: Settings = {
   format: "png",
   mediaAspect: "auto",
   altText: "badge",
+  postsPerImage: 0,
 };
 
 /**
