@@ -1,5 +1,5 @@
 import type { MediaItem, NormalizedPost, QuotedPost } from "@ferrix/shared";
-import type { SynMedia, SynTweet } from "./syndication";
+import type { SynTweet } from "./syndication";
 
 const decodeEntities = (s: string) =>
   s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
@@ -39,15 +39,6 @@ function largePhoto(url: string) {
   return u.toString();
 }
 
-/** Best MP4 for re-encoding: highest bitrate at or under ~2.5 Mbps (≈720p), else the smallest. */
-function pickMp4(m: SynMedia): string | undefined {
-  const mp4 = (m.video_info?.variants ?? []).filter((v) => v.content_type === "video/mp4");
-  if (!mp4.length) return undefined;
-  const sorted = [...mp4].sort((a, b) => (a.bitrate ?? 0) - (b.bitrate ?? 0));
-  const capped = sorted.filter((v) => (v.bitrate ?? 0) <= 2_500_000);
-  return (capped.at(-1) ?? sorted[0]).url;
-}
-
 function media(t: SynTweet): MediaItem[] {
   return (t.mediaDetails ?? []).slice(0, 4).map((m) => {
     const dims = m.original_info ? { width: m.original_info.width, height: m.original_info.height } : {};
@@ -55,8 +46,6 @@ function media(t: SynTweet): MediaItem[] {
     return {
       type: m.type === "animated_gif" ? "gif" : "video",
       thumbnailUrl: m.media_url_https,
-      videoUrl: pickMp4(m),
-      durationMs: m.video_info?.duration_millis,
       altText: m.ext_alt_text,
       ...dims,
     };

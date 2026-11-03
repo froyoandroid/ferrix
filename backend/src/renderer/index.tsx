@@ -51,12 +51,6 @@ export async function renderPng(post: NormalizedPost, options: RenderOptions, ba
   return toPng(await cardSvg(await resolveFor(post, options), options, badge), options.scale);
 }
 
-/** Raw RGBA raster of a single card (for video compositing). */
-export async function renderRgba(resolved: ResolvedPost, options: RenderOptions) {
-  const img = rasterize(await cardSvg(resolved, options), options.scale);
-  return { width: img.width, height: img.height, pixels: new Uint8Array(img.pixels) };
-}
-
 export async function renderThread(
   posts: NormalizedPost[],
   opts: { mode: ThreadMode; numbering: boolean; select?: number[]; options: RenderOptions },

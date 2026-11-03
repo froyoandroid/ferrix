@@ -3,12 +3,7 @@ import { loadImage, type LoadedImage } from "./images";
 
 export interface ResolvedMedia extends MediaItem {
   img: LoadedImage | null;
-  /** Animated export: paint this slot a key colour so the video can be composited into it. */
-  key?: boolean;
 }
-
-export const KEY_RGB = [0, 255, 1] as const;
-export const KEY_COLOR = "#00ff01";
 export interface ResolvedQuote extends QuotedPost {
   avatar: LoadedImage | null;
   resolvedMedia: ResolvedMedia[];

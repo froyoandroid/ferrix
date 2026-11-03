@@ -8,7 +8,6 @@ import { zipImages } from "./export/zip";
 import { extract, ExtractError } from "./adapters";
 import { z } from "zod";
 import { fileBase } from "./naming";
-import { renderMp4, VideoError } from "./video/animate";
 
 const app = new Hono();
 app.use("*", logger());
@@ -70,27 +69,6 @@ app.post("/api/render/thread", async (c) => {
     });
   } catch (err) {
     return c.json({ error: (err as Error).message }, 422);
-  }
-});
-
-app.post("/api/render/video", async (c) => {
-  const parsed = RenderRequest.safeParse(await c.req.json().catch(() => null));
-  if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
-  const { post, options } = parsed.data;
-  try {
-    const mp4 = await renderMp4(post, options);
-    return new Response(new Uint8Array(mp4), {
-      headers: {
-        "Content-Type": "video/mp4",
-        "Content-Disposition": `inline; filename="${fileBase(post, options.maskUsername)}_${options.theme}.mp4"`,
-        "X-Ferrix-Source-Url": encodeURI(post.sourceUrl),
-        "Cache-Control": "no-store",
-      },
-    });
-  } catch (err) {
-    if (err instanceof VideoError) return c.json({ error: err.message }, err.status);
-    if (err instanceof Error && /Platform/.test(err.message)) return c.json({ error: err.message }, 422);
-    throw err;
   }
 });
 

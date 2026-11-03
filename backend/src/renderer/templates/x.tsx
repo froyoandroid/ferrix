@@ -1,6 +1,6 @@
 import type { RenderOptions } from "@ferrix/shared";
 import type { Theme } from "../themes";
-import { KEY_COLOR, type ResolvedMedia, type ResolvedPost, type ResolvedQuote } from "../resolve";
+import { type ResolvedMedia, type ResolvedPost, type ResolvedQuote } from "../resolve";
 import { RichText } from "../richtext";
 
 export const X_PADDING = 24;
@@ -121,7 +121,6 @@ export function MetricsRow({ metrics, theme, fontSize = 15 }: { metrics: Resolve
 }
 
 function MediaTile({ m, w, h, theme }: { m: ResolvedMedia; w: number; h: number; theme: Theme }) {
-  if (m.key) return <div style={{ display: "flex", width: w, height: h, backgroundColor: KEY_COLOR }} />;
   return (
     <div style={{ display: "flex", position: "relative", width: w, height: h, backgroundColor: theme.media, overflow: "hidden" }}>
       {m.img ? (
